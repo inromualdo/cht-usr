@@ -1,0 +1,6 @@
+<select name="place_parent" hidden>
+    <option value="{{ place.id }}" selected>{{ place.name }}</option>
+</select>
+<input id="place_search" hx-swap-oob="true" name="place_search" type="search" class="input" hx-post="place/search"
+    hx-trigger="keyup changed delay:250ms, search" hx-target="#search_results" hx-swap="innerHTML"
+    value="{{place.name}}" />

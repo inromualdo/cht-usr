@@ -1,0 +1,71 @@
+<h5 class="title is-5">New {{pagePlaceType}}</h5>
+<form autocomplete="off" hx-post="#" hx-target="#workflow-content" hx-swap="outerHTML">
+    <input name="place_type" value="{{pagePlaceType}}" hidden />
+    <div class="field">
+        <label class="label">Place*</label>
+        <div class="control">
+            <input name="place_name" type="text" placeholder="eg. Division One" class="input" required
+                pattern="^[a-zA-Z'\s]+$" />
+        </div>
+    </div>
+
+    {% if hasParent %}
+    <div class="field">
+        <label class="label">Where does this {{pagePlaceType}} belong?</label>
+        <div class="control">
+            <input id="place_search" name="place_search" type="search" class="input"
+                hx-post="search/parent?type={{pagePlaceType}}" hx-vals="" placeholder="start typing to see suggestions"
+                hx-trigger="keyup changed delay:250ms, search" hx-target="#search_results" hx-swap="innerHTML"
+                required />
+        </div>
+        <div id="search_results" class="control">
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="field">
+        <label class="label">Contact*</label>
+        <div class="field is-grouped">
+            <div class="control is-expanded">
+                <input name="contact_name" type="text" placeholder="eg. Jane Doe" class="input" required
+                    pattern="^[a-zA-Z'\s]+$" />
+            </div>
+            <div class="control">
+                <div class="select">
+                    <select name="contact_sex" title="sex" required>
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="field">
+        <label class="label">Phone*</label>
+        <div class="control">
+            <input name="contact_phone" type="text" placeholder="+1234567890" class="input" required
+                pattern="^[+\d]+$" />
+        </div>
+    </div>
+
+    <div class="field">
+        <label class="label">User Role*</label>
+        <div class="control">
+            <div class="select">
+                <select name="contact_role" title="sex">
+                    {% for role in userRoles %}
+                    <option value="{{ role }}">{{ role }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="field is-grouped is-grouped-right">
+        <div class="control">
+            <button class="button is-link">Add</button>
+        </div>
+    </div>
+</form>
