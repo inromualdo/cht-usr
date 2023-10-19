@@ -114,7 +114,7 @@ fastify.post("/workbook/:id", async (req, resp) => {
 
   addPlace(workbookId, p);
 
-  return resp.view("src/web/public/content.html", {
+  return resp.view("src/web/public/components/content_update.html", {
     pagePlaceType: data.place_type,
     userRoles: getUserRoles,
     hasParent: !!getParentType(data.place_type),

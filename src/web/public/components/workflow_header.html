@@ -1,17 +1,14 @@
-<section id="header" class="section pb-3" hx-swap-oob="true">
-    <h5 class="title">{{title}}</h5>
-    <form autocomplete="off">
-        <div class="field">
-            <div class="control">
-                <div class="select">
-                    <select name="type" hx-post="ui/place/update" hx-trigger="change" hx-target="#place_form_parent"
-                        hx-swap="innerHTML">
-                        {%- for place in hierarchy %}
-                        <option value="{{place}}">{{place}}</option>
-                        {%- endfor%}
-                    </select>
-                </div>
+<form autocomplete="off">
+    <div class="field">
+        <div class="control">
+            <div class="select">
+                <select name="type" hx-post="ui/place/update" hx-trigger="change" hx-target="#place_form_parent"
+                    hx-swap="innerHTML">
+                    {%- for place in hierarchy %}
+                    <option value="{{place}}">{{place}}</option>
+                    {%- endfor%}
+                </select>
             </div>
         </div>
-    </form>
-</section>
+    </div>
+</form>

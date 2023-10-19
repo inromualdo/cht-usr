@@ -9,7 +9,9 @@
 </head>
 
 <body>
-    {% include "components/workflow_header.html" %}
+    <section id="header" class="section pb-3" hx-swap-oob="true">
+        <h5 class="title">{{title}}</h5>
+    </section>
     <section class="section pt-3">
         <div id="container">
             {% include "content.html" %}
