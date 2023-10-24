@@ -18,41 +18,19 @@ export type Credentials = {
   Domain: string;
 };
 
-export const getAppSettings = async (
-  creds: Credentials
-): Promise<AppSettings> => {
-  const url = `https://${creds.User}:${creds.Pass}@${creds.Domain}/medic/_design/medic/_rewrite/app_settings/medic`;
-  const resp = await axios.get(url);
-  if (resp.status !== 200) {
-    throw new Error(`could not get app settings: ${resp.statusText}`);
-  }
-  const { settings: respBody } = resp.data;
-  return {
-    hierarchyTypes: respBody["place_hierarchy_types"],
-    roles: Object.keys(respBody["roles"]),
-    contactTypes: respBody["contact_types"].map((item: any) => {
-      return {
-        id: item.id,
-        createForm: item.create_form,
-        parents: item.parents,
-      };
-    }),
-  };
-};
-
 export type PersonPayload = {
   name: string;
   phone: string;
   sex: string;
   type: string;
   contact_type: string;
-  place: string;
 };
 
 export type PlacePayload = {
   name: string;
   type: string;
   contact_type: string;
+  contact: PersonPayload;
   parent?: string;
 };
 
@@ -64,68 +42,91 @@ export type UserPayload = {
   contact: string;
 };
 
-// we only get the place id back
-export const createPerson = async (
-  creds: Credentials,
-  person: PersonPayload
-): Promise<string> => {
-  const url = `https://${creds.User}:${creds.Pass}@${creds.Domain}/api/v1/people`;
-  const resp = await axios.post(url, person);
-  if (resp.status !== 200) {
-    throw new Error(`could not create place: ${resp.statusText}`);
-  }
-  return resp.data.id;
-};
-
-// we only get the place id back
-export const createPlace = async (
-  creds: Credentials,
-  place: PlacePayload
-): Promise<string> => {
-  const url = `https://${creds.User}:${creds.Pass}@${creds.Domain}/api/v1/places`;
-  const resp = await axios.post(url, place);
-  if (resp.status !== 200) {
-    throw new Error(`could not create place: ${resp.statusText}`);
-  }
-  return resp.data.id;
-};
-
-// we only get the user and contact id back
-export const createUser = async (
-  creds: Credentials,
-  user: UserPayload
-): Promise<void> => {
-  const url = `https://${creds.User}:${creds.Pass}@${creds.Domain}/api/v1/users`;
-  const resp = await axios.post(url, user);
-  if (resp.status !== 200) {
-    throw new Error(`could not create users: ${resp.statusText}`);
-  }
-};
-
 export type PlaceSearchResult = {
   id: string;
   name: string;
 };
 
-export const searchPlace = async (
-  creds: Credentials,
-  placeType: string,
-  searchStr: string
-): Promise<PlaceSearchResult[]> => {
-  const url = `https://${creds.User}:${creds.Pass}@${creds.Domain}/medic/\_find`;
-  const resp = await axios.post(url, {
-    selector: {
-      contact_type: placeType,
-      name: {
-        $regex: `^(?i)${searchStr}`,
-      },
-    },
-  });
-  if (resp.status !== 200) {
-    throw new Error(`search failed: ${resp.statusText}`);
+export class ChtApi {
+  creds: Credentials;
+
+  constructor(creds: Credentials) {
+    this.creds = creds;
   }
-  const { docs } = resp.data;
-  return docs.map((doc: any) => {
-    return { id: doc._id, name: doc.name };
-  });
-};
+
+  getAppSettings = async (): Promise<AppSettings> => {
+    const url = `https://${this.creds.User}:${this.creds.Pass}@${this.creds.Domain}/medic/_design/medic/_rewrite/app_settings/medic`;
+    const resp = await axios.get(url);
+    const { settings: respBody } = resp.data;
+    return {
+      hierarchyTypes: respBody["place_hierarchy_types"],
+      roles: Object.keys(respBody["roles"]),
+      contactTypes: respBody["contact_types"].map((item: any) => {
+        return {
+          id: item.id,
+          createForm: item.create_form,
+          parents: item.parents,
+        };
+      }),
+    };
+  };
+
+  getDoc = async (id: string): Promise<any> => {
+    const url = `https://${this.creds.User}:${this.creds.Pass}@${this.creds.Domain}/medic/\_find`;
+    const resp = await axios.post(url, {
+      selector: {
+        _id: id,
+      },
+    });
+    return resp.data.docs[0];
+  };
+
+  getPlaceContactId = async (id: string): Promise<string> => {
+    const doc: any = await this.getDoc(id);
+    return doc.contact._id;
+  };
+
+  updateContactParent = async (id: string, place: string): Promise<void> => {
+    const doc: any = await this.getDoc(id);
+    doc.parent = {
+      _id: place,
+    };
+    delete doc["_id"];
+    const url = `https://${this.creds.User}:${this.creds.Pass}@${this.creds.Domain}/medic/${id}`;
+    const resp = await axios.put(url, doc);
+    if (resp.status !== 201) {
+      throw new Error(resp.data);
+    }
+  };
+
+  // we only get the place id back
+  createPlace = async (place: PlacePayload): Promise<string> => {
+    const url = `https://${this.creds.User}:${this.creds.Pass}@${this.creds.Domain}/api/v1/places`;
+    const resp = await axios.post(url, place);
+    return resp.data.id;
+  };
+
+  createUser = async (user: UserPayload): Promise<void> => {
+    const url = `https://${this.creds.User}:${this.creds.Pass}@${this.creds.Domain}/api/v1/users`;
+    await axios.post(url, user);
+  };
+
+  searchPlace = async (
+    placeType: string,
+    searchStr: string
+  ): Promise<PlaceSearchResult[]> => {
+    const url = `https://${this.creds.User}:${this.creds.Pass}@${this.creds.Domain}/medic/\_find`;
+    const resp = await axios.post(url, {
+      selector: {
+        contact_type: placeType,
+        name: {
+          $regex: `^(?i)${searchStr}`,
+        },
+      },
+    });
+    const { docs } = resp.data;
+    return docs.map((doc: any) => {
+      return { id: doc._id, name: doc.name };
+    });
+  };
+}

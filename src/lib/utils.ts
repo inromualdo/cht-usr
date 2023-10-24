@@ -1,4 +1,4 @@
-import { AppSettings } from "../lib/cht";
+import { AppSettings } from "./cht";
 
 type person = {
   contactType: string;

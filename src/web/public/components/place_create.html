@@ -1,11 +1,10 @@
-<h5 class="title is-5">New {{pagePlaceType}}</h5>
-<form autocomplete="off" hx-post="#" hx-target="#places_parent" hx-swap="innerHTML">
+<form id="form_place_create" autocomplete="off" hx-post="#" hx-target="this" hx-swap="outerHTML">
     <input name="place_type" value="{{pagePlaceType}}" hidden />
     <div class="field">
         <label class="label">Place*</label>
         <div class="control">
             <input name="place_name" type="text" placeholder="eg. Division One" class="input" required
-                pattern="^[a-zA-Z'\s]+$" />
+                pattern="^[a-zA-Z'\s]+$" {% if data.place_name %}value="{{data.place_name}}" {% endif %} />
         </div>
     </div>
 
@@ -15,11 +14,16 @@
         <div class="control">
             <input id="place_search" name="place_search" type="search" class="input"
                 hx-post="search/parent?type={{pagePlaceType}}" hx-vals="" placeholder="start typing to see suggestions"
-                hx-trigger="keyup changed delay:250ms, search" hx-target="#search_results" hx-swap="innerHTML"
-                required />
+                hx-trigger="keyup changed delay:250ms, search" hx-target="#search_results" hx-swap="innerHTML" required
+                {% if data.place_search %}value="{{data.place_search}}" {% endif %} />
         </div>
         <div id="search_results" class="control">
         </div>
+        {% if data.place_parent %}
+        <select name="place_parent" hidden>
+            <option value="{{ data.place_parent }}" selected>{{ data.place_search }}</option>
+        </select>
+        {% endif %}
     </div>
     {% endif %}
 
@@ -28,13 +32,13 @@
         <div class="field is-grouped">
             <div class="control is-expanded">
                 <input name="contact_name" type="text" placeholder="eg. Jane Doe" class="input" required
-                    pattern="^[a-zA-Z'\s]+$" />
+                    pattern="^[a-zA-Z'\s]+$" {% if data.contact_name %}value="{{data.contact_name}}" {% endif %} />
             </div>
             <div class="control">
                 <div class="select">
                     <select name="contact_sex" title="sex" required>
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
+                        <option value="male" {% if data.contact_sex=="male" %}selected {% endif %}>Male</option>
+                        <option value="female" {% if data.contact_sex=="female" %}selected {% endif %}>Female</option>
                     </select>
                 </div>
             </div>
@@ -45,8 +49,11 @@
     <div class="field">
         <label class="label">Phone*</label>
         <div class="control">
-            <input name="contact_phone" type="text" placeholder="+1234567890" class="input" required
-                pattern="^[+\d]+$" />
+            <input name="contact_phone" type="tel" placeholder="eg. 0712345678" class="input" required
+                pattern="^[+\d]+$" / {% if data.contact_phone %}value="{{data.contact_phone}}" {% endif %}>
+            {% if errors.phoneInvalid %}
+            <span class='error-message' style="color:red">Invalid Phone Number format</span>
+            {% endif %}
         </div>
     </div>
 
@@ -54,18 +61,19 @@
         <label class="label">User Role*</label>
         <div class="control">
             <div class="select">
-                <select name="contact_role" title="sex">
+                <select name="contact_role" title="roles">
                     {% for role in userRoles %}
-                    <option value="{{ role }}">{{ role }}</option>
+                    <option value="{{ role }}" {% if data.contact_role==role %}selected {% endif %}>{{ role }}
+                    </option>
                     {% endfor %}
                 </select>
             </div>
         </div>
     </div>
 
-    <div class="field is-grouped is-grouped-right">
+    <div class=" field is-grouped is-grouped-right">
         <div class="control">
-            <button class="button is-link">Add</button>
+            <button id="place_create_submit" class="button is-link">Add</button>
         </div>
     </div>
 </form>

@@ -1,4 +1,5 @@
-{% include "components/places.html" %}
-<div id="place_form_parent" hx-swap-oob="true">
-    {% include "components/place_create.html" %}
+{% include "components/place_create.html" %}
+<div id="places_parent" class="tile is-child" hx-get="/ui/workflow/places" hx-target="table" hx-swap-oob="true"
+    hx-trigger="sse:status_change">
+    {% include "components/places.html" %}
 </div>

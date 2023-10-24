@@ -1,17 +1,14 @@
 import {
-  createPerson,
-  createPlace,
-  createUser,
-  Credentials,
+  ChtApi,
   PersonPayload,
   PlacePayload,
   PlaceSearchResult,
-  searchPlace,
   UserPayload,
 } from "../lib/cht";
-import { Hierarchy } from "./app_settings";
+import { Hierarchy } from "../lib/utils";
 
-type person = {
+export type person = {
+  id: string;
   name: string;
   phone: string;
   sex: string;
@@ -27,182 +24,193 @@ export type place = {
     id: string;
     name: string;
   };
-};
-
-type workflowState = {
-  [key: string]: place[] | undefined;
-};
-
-type workbookState = {
-  [key: string]: workflowState;
-};
-
-type state = {
-  creds?: Credentials;
-  hierarchy?: Hierarchy;
-  userRoles?: string[];
-  workbooks: workbookState;
-};
-
-let cache: state;
-
-export const initAppState = (
-  creds: Credentials,
-  hierarchy: Hierarchy,
-  roles: string[]
-) => {
-  cache = {
-    creds: creds,
-    userRoles: roles,
-    hierarchy: hierarchy,
-    workbooks: {},
+  state?: {
+    status: string;
   };
 };
 
-export const initWorkbook = (name: string): string => {
-  const places = Object.keys(cache.hierarchy!!).filter(
-    (key) => !cache.hierarchy!![key].parent
-  );
-  const active = places[0];
-  const workflowState: workflowState = {};
-  workflowState[active] = [];
-  const id = name.toLowerCase().split(" ").join("");
-  cache.workbooks[id] = workflowState;
-  return id;
+export type workBookState = {
+  id: string;
+  places: Map<string, place[]>;
 };
 
-export const getWorkbooks = (): string[] => {
-  return Object.keys(cache.workbooks);
-};
+export enum jobStatus {
+  SUCCESS = "success",
+  FAILURE = "failure",
+  PENDING = "pending",
+}
 
-const getWorkbookState = (name: string): workflowState => {
-  return cache!!.workbooks[name];
-};
+export class MemCache {
+  private chtApi: ChtApi;
+  private hierarchy: Hierarchy;
+  private userRoles: string[];
+  private workbooks: Map<string, workBookState>;
+  private searchResultCache: Map<string, PlaceSearchResult> = new Map();
+  private idMap: Map<string, string | undefined> = new Map(); //<local> - <remote> place id map
+  private jobState: Map<string, jobStatus> = new Map();
 
-export const addPlace = (workbook: string, data: place) => {
-  const places = getWorkbookState(workbook)!![data.type] || [];
-  places.push(data);
-  getWorkbookState(workbook)!![data.type] = places;
-};
-
-export const getPlaces = (workbook: string): place[] => {
-  const places: place[] = [];
-  Object.keys(getWorkbookState(workbook)).forEach((page) => {
-    const data = getWorkbookState(workbook)[page] || [];
-    places.push(...data);
-  });
-  return places;
-};
-
-export const getUserRoles = (): string[] => {
-  return cache!!.userRoles!!;
-};
-
-export const getPlaceTypes = (): string[] => {
-  return Object.keys(cache!!.hierarchy!!);
-};
-
-export const getParentType = (placeType: string): string | undefined => {
-  return cache!!.hierarchy!![placeType].parent;
-};
-
-type idMap = {
-  [key: string]: string | undefined;
-};
-const placeIds: idMap = {};
-
-const buildUserPayload = (
-  placeId: string,
-  contactId: string,
-  contactName: string,
-  role: string
-): UserPayload => {
-  const data: UserPayload = {
-    username: contactName.toLowerCase().split(" ").join("_"),
-    password: "medic@1234!",
-    type: role,
-    place: placeId,
-    contact: contactId,
-  };
-  return data;
-};
-
-const buildPersonPayload = (person: person, placeId: string): PersonPayload => {
-  const data: PersonPayload = {
-    name: person.name,
-    phone: person.phone,
-    sex: person.sex,
-    type: "contact",
-    contact_type: "person",
-    place: placeId,
-  };
-  return data;
-};
-
-const buildPlacePayload = (place: place): PlacePayload => {
-  const data: PlacePayload = {
-    name: place.name,
-    type: "contact",
-    contact_type: place.type,
-  };
-  if (place.parent) {
-    data.parent = placeIds[place.parent.id];
+  constructor(chtApi: ChtApi, hierarchy: Hierarchy, roles: string[]) {
+    this.chtApi = chtApi;
+    this.userRoles = roles;
+    this.hierarchy = hierarchy;
+    this.workbooks = new Map();
   }
-  return data;
-};
 
-type searchResultCache = {
-  [key: string]: PlaceSearchResult;
-};
-const remotePlaceCache: searchResultCache = {};
+  newWorkbook = (name: string): string => {
+    const id = name.toLowerCase().split(" ").join("");
+    const places = Object.keys(this.hierarchy).filter(
+      (key) => !this.hierarchy!![key].parent
+    );
+    const active = places[0];
+    const workflowState: workBookState = { id: id, places: new Map() };
+    workflowState.places.set(active, []);
+    this.workbooks.set(id, workflowState);
+    return id;
+  };
 
-export const findPlace = async (
-  workbookId: string,
-  placeType: string,
-  searchStr: string
-): Promise<PlaceSearchResult[]> => {
-  const localResults = getPlaces(workbookId)
-    .filter((place) => place.name.includes(searchStr))
-    .map((place) => {
-      return { id: place.id, name: place.name };
-    });
-  const remoteResults = await searchPlace(cache.creds!!, placeType, searchStr);
+  getWorkbooks = (): string[] => {
+    return Array.from(this.workbooks.keys());
+  };
 
-  const results: PlaceSearchResult[] = localResults.concat(remoteResults);
-  results.forEach((place) => {
-    remotePlaceCache[place.id] = place;
-  });
-
-  return results;
-};
-
-export const getPlace = (id: string): PlaceSearchResult => {
-  return remotePlaceCache[id];
-};
-
-const submitWorkbook = async (workbook: string) => {
-  for (const placeType of Object.keys(getWorkbookState(workbook)!!)) {
-    const places = getWorkbookState(workbook)!![placeType];
-    for (const place of places!!) {
-      const placePayload = buildPlacePayload(place);
-      if (placeIds[place.id]) {
-        continue;
-      }
-      const placeId = await createPlace(cache.creds!!, placePayload);
-      placeIds[place.id] = placeId;
-      const contactId = await createPerson(
-        cache.creds!!,
-        buildPersonPayload(place.contact, placeId)
-      );
-      await createUser(
-        cache.creds!!,
-        buildUserPayload(
-          placeId,
-          contactId,
-          place.contact.name,
-          place.contact.role
-        )
-      );
+  getWorkbookState = (id: string): workBookState => {
+    const workbook = this.workbooks.get(id);
+    if (!workbook) {
+      throw new Error("workbook does not exist");
     }
-  }
-};
+    return workbook;
+  };
+
+  addPlace = (workbookId: string, data: place) => {
+    const workbook = this.workbooks.get(workbookId);
+    if (!workbook) {
+      throw new Error("workbook does not exist");
+    }
+    const places = workbook.places.get(data.type) || [];
+    places.push(data);
+    this.idMap.set(data.id, undefined);
+    this.idMap.set(data.contact.id, undefined);
+    workbook.places.set(data.type, places);
+  };
+
+  getPlaces = (workbookId: string): place[] => {
+    const workbook = this.workbooks.get(workbookId);
+    if (!workbook) {
+      throw new Error("workbook does not exist");
+    }
+    const places: place[] = [];
+    for (const placeType of this.getPlaceTypes()) {
+      const data = workbook.places.get(placeType) || [];
+      data.forEach((place) => {
+        if (this.jobState.has(place.id)) {
+          const state = this.jobState.get(place.id);
+          if (state) {
+            place.state = { status: state.toString() };
+          }
+        }
+        places.push(place);
+      });
+    }
+    return places;
+  };
+
+  getPlace = (
+    workbookId: string,
+    placeType: string,
+    placeId: string
+  ): place => {
+    const workbook = this.workbooks.get(workbookId);
+    if (!workbook) {
+      throw new Error("workbook does not exist");
+    }
+    return workbook.places
+      .get(placeType)!!
+      .find((place) => place.id === placeId)!!;
+  };
+
+  getPlaceTypes = (): string[] => {
+    return Object.keys(this.hierarchy!!);
+  };
+
+  getUserRoles = (): string[] => {
+    return this.userRoles!!;
+  };
+
+  getParentType = (placeType: string): string | undefined => {
+    return this.hierarchy!![placeType].parent;
+  };
+
+  findPlace = async (
+    workbookId: string,
+    placeType: string,
+    searchStr: string
+  ): Promise<PlaceSearchResult[]> => {
+    const localResults = this.getPlaces(workbookId)
+      .filter((place) => place.name.includes(searchStr))
+      .map((place) => {
+        return { id: place.id, name: place.name };
+      });
+    const remoteResults = await this.chtApi.searchPlace(placeType, searchStr);
+    remoteResults.forEach((result) => this.setRemoteId(result.id, result.id));
+    const results: PlaceSearchResult[] = localResults.concat(remoteResults);
+    results.forEach((place) => {
+      this.searchResultCache.set(place.id, place);
+    });
+    return results;
+  };
+
+  getCachedResult = (id: string): PlaceSearchResult | undefined => {
+    return this.searchResultCache.get(id);
+  };
+
+  setRemoteId = (localId: string, id: string) => {
+    this.idMap.set(localId, id);
+  };
+
+  getRemoteId = (id: string): string | undefined => {
+    return this.idMap.get(id);
+  };
+
+  setJobState = (jobId: string, status: jobStatus) => {
+    this.jobState.set(jobId, status);
+  };
+
+  buildUserPayload = (
+    placeId: string,
+    contactId: string,
+    contactName: string,
+    role: string
+  ): UserPayload => {
+    const data: UserPayload = {
+      username: contactName.toLowerCase().split(" ").join("_"),
+      password: "medic@1234!",
+      type: role,
+      place: placeId,
+      contact: contactId,
+    };
+    return data;
+  };
+
+  buildPersonPayload = (person: person): PersonPayload => {
+    const data: PersonPayload = {
+      name: person.name,
+      phone: person.phone,
+      sex: person.sex,
+      type: "contact",
+      contact_type: "person",
+    };
+    return data;
+  };
+
+  buildPlacePayload = (place: place): PlacePayload => {
+    const data: PlacePayload = {
+      name: place.name,
+      type: "contact",
+      contact_type: place.type,
+      contact: this.buildPersonPayload(place.contact),
+    };
+    if (place.parent) {
+      data.parent = this.getRemoteId(place.parent.id);
+    }
+    return data;
+  };
+}

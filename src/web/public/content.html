@@ -3,12 +3,18 @@
         <div class="tile is-child">
             {% include "components/workflow_header.html" %}
             <div id="place_form_parent">
+                <h5 id="form_place_create_header" class="title is-5">New {{pagePlaceType}}</h5>
                 {% include "components/place_create.html" %}
             </div>
         </div>
     </div>
-    <div class="tile is-child column">
-        <div id="places_parent" class="tile is-child">
+    <div class="tile is-child column" hx-ext="sse" sse-connect="/jobs/status">
+        <div class="buttons is-right">
+            <button class="button is-dark" hx-post="/workbook/submit" hx-target="this"
+                hx-swap="outerHTML">Create</button>
+        </div>
+        <div id="places_parent" class="tile is-child" hx-get="/ui/workflow/places" hx-target="table"
+            hx-trigger="sse:status_change">
             {% include "components/places.html" %}
         </div>
     </div>

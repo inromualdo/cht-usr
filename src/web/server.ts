@@ -1,37 +1,42 @@
 import Fastify from "fastify";
 import view from "@fastify/view";
 import formbody from "@fastify/formbody";
-import { Credentials, getAppSettings, searchPlace } from "../lib/cht";
-import { getHierarchy, getRoles } from "../data/app_settings";
 import { Liquid } from "liquidjs";
-import {
-  addPlace,
-  getPlaces,
-  getPlaceTypes,
-  getUserRoles,
-  initWorkbook,
-  initAppState,
-  findPlace,
-  getParentType,
-  getPlace,
-  getWorkbooks,
-  place,
-} from "../data/cache";
+import { FastifySSEPlugin } from "fastify-sse-v2";
+import { MemCache, place } from "../data/cache";
+import { UploadManager } from "../data/job";
+import { isValidPhoneNumber } from "libphonenumber-js";
 
-const renderEngine = new Liquid({
-  extname: ".html",
-  root: "src/web/public",
+let cache: MemCache;
+let uploadManager: UploadManager;
+
+export default async (memCache: MemCache, manager: UploadManager) => {
+  cache = memCache;
+  uploadManager = manager;
+  fastify.listen({ port: 3000 }, (err, address) => {
+    if (err) throw err;
+    console.log(`server is listening on ${address}`);
+  });
+};
+
+const renderEngine = new Liquid({ extname: ".html", root: "src/web/public" });
+const fastify = Fastify({
+  logger: {
+    transport: {
+      target: "pino-pretty",
+    },
+  },
 });
-const fastify = Fastify({ logger: true });
-fastify.register(formbody);
 fastify.register(view, {
   engine: {
     liquid: renderEngine,
   },
 });
+fastify.register(formbody);
+fastify.register(FastifySSEPlugin);
 
 fastify.get("/", async (req, resp) => {
-  const workbooks = getWorkbooks();
+  const workbooks = cache.getWorkbooks();
   return resp.view("src/web/public/index.html", {
     workbooks: workbooks,
   });
@@ -43,24 +48,24 @@ fastify.get("/ui/workbook/new", async (req, resp) => {
 
 fastify.post("/workbook/add", async (req, resp) => {
   const data: any = req.body;
-  const id = initWorkbook(data.workbook_name);
+  const id = cache.newWorkbook(data.workbook_name);
   return resp.view("src/web/public/index.html", {
-    workbooks: getWorkbooks(),
+    workbooks: cache.getWorkbooks(),
   });
 });
 
 fastify.get("/workbook/:id", async (req, resp) => {
   const params: any = req.params;
   const id = params.id;
-  const placeType = getPlaceTypes()[0];
+  const placeTypes = cache.getPlaceTypes();
 
   const tmplData = {
     title: id,
-    hierarchy: getPlaceTypes(),
-    places: getPlaces(id),
-    userRoles: getUserRoles(),
-    pagePlaceType: placeType,
-    hasParent: getParentType(placeType),
+    hierarchy: cache.getPlaceTypes(),
+    places: cache.getPlaces(id),
+    userRoles: cache.getUserRoles(),
+    pagePlaceType: placeTypes[0],
+    hasParent: cache.getParentType(placeTypes[0]),
   };
 
   const isHxReq = req.headers["hx-request"];
@@ -73,12 +78,36 @@ fastify.get("/workbook/:id", async (req, resp) => {
 fastify.post("/workbook/ui/place/update", async (req, resp) => {
   const data: any = req.body;
   const placeType = data.type;
-  return resp.view("src/web/public/components/place_create.html", {
+  const form = renderEngine.renderFileSync("components/place_create.html", {
     pagePlaceType: placeType,
-    userRoles: getUserRoles(),
-    hasParent: getParentType(placeType),
+    userRoles: cache.getUserRoles(),
+    hasParent: cache.getParentType(placeType),
   });
+  const header = renderEngine.parseAndRenderSync(
+    '<h5 id="form_place_create_header" class="title is-5" hx-swap-oob="true">New {{pagePlaceType}}</h5>',
+    {
+      pagePlaceType: placeType,
+    }
+  );
+  return form + header;
 });
+
+const validatePlace = (
+  data: any
+): {
+  dataValid: boolean;
+  errors: {
+    phoneInvalid: boolean;
+  };
+} => {
+  const isPhoneValid = isValidPhoneNumber(data.contact_phone, "KE");
+  return {
+    dataValid: isPhoneValid,
+    errors: {
+      phoneInvalid: !isPhoneValid,
+    },
+  };
+};
 
 fastify.post("/workbook/:id", async (req, resp) => {
   const params: any = req.params;
@@ -86,18 +115,31 @@ fastify.post("/workbook/:id", async (req, resp) => {
 
   const data: any = req.body;
   if (
-    getParentType(data.place_type) &&
-    (!data.place_parent || !getPlace(data.place_parent))
+    cache.getParentType(data.place_type) &&
+    (!data.place_parent || !cache.getCachedResult(data.place_parent))
   ) {
     resp.status(400);
     return;
   }
 
+  const results = validatePlace(data);
+  if (!results.dataValid) {
+    return resp.view("src/web/public/components/place_create.html", {
+      pagePlaceType: data.place_type,
+      userRoles: cache.getUserRoles(),
+      hasParent: cache.getParentType(data.place_type),
+      data: data,
+      errors: results.errors,
+    });
+  }
+
+  const idSuffix = new Date().getMilliseconds().toString();
   const p: place = {
-    id: new Date().getMilliseconds().toString(),
+    id: "place::" + idSuffix,
     name: data.place_name,
     type: data.place_type,
     contact: {
+      id: "person::" + idSuffix,
       name: data.contact_name,
       phone: data.contact_phone,
       sex: data.contact_sex,
@@ -105,26 +147,26 @@ fastify.post("/workbook/:id", async (req, resp) => {
     },
   };
   if (data.place_parent) {
-    const parent = getPlace(data.place_parent);
+    const parent = cache.getCachedResult(data.place_parent)!!;
     p.parent = {
       id: parent.id,
       name: parent.name,
     };
   }
 
-  addPlace(workbookId, p);
+  cache.addPlace(workbookId, p);
 
   return resp.view("src/web/public/components/content_update.html", {
     pagePlaceType: data.place_type,
-    userRoles: getUserRoles,
-    hasParent: !!getParentType(data.place_type),
-    places: getPlaces(workbookId),
+    userRoles: cache.getUserRoles(),
+    hasParent: !!cache.getParentType(data.place_type),
+    places: cache.getPlaces(workbookId),
   });
 });
 
 fastify.post("/workbook/search/parent", async (req, resp) => {
   const data: any = req.body;
-  const placeType = getParentType(data.place_type)!!;
+  const placeType = cache.getParentType(data.place_type)!!;
   const searchString = data.place_search;
 
   const referrer: string = req.headers["referer"]!!; // idk man, this might be bad
@@ -135,7 +177,7 @@ fastify.post("/workbook/search/parent", async (req, resp) => {
     return;
   }
 
-  const results = await findPlace(workbookId, placeType, searchString);
+  const results = await cache.findPlace(workbookId, placeType, searchString);
   if (results.length === 0) {
     results.push({ id: "na", name: "Place Not Found" });
   }
@@ -144,7 +186,39 @@ fastify.post("/workbook/search/parent", async (req, resp) => {
   });
 });
 
-fastify.post("/workbook/submit", async (req, resp) => {});
+fastify.post("/workbook/submit", async (req, resp) => {
+  const referrer: string = req.headers["referer"]!!; // idk man, this might be bad
+  const workbookId = new URL(referrer).pathname.replace("/workbook/", "");
+  if (!workbookId) {
+    resp.status(400);
+    resp.send("invalid referrer " + referrer);
+    return;
+  }
+  uploadManager.doUpload(workbookId);
+  return '<button class="button is-dark" hx-post="/workbook/submit" hx-target="this" hx-swap="outerHTML">Create</button>';
+});
+
+fastify.get("/jobs/status", async (req, resp) => {
+  resp.hijack();
+  const cb = (id: string) => {
+    resp.sse({ event: "status_change", data: "Some message" });
+  };
+  uploadManager.listen(cb);
+  req.socket.on("close", () => uploadManager.removeListener(cb));
+});
+
+fastify.get("/ui/workflow/places", async (req, resp) => {
+  const referrer: string = req.headers["referer"]!!; // idk man, this might be bad
+  const workbookId = new URL(referrer).pathname.replace("/workbook/", "");
+  if (!workbookId) {
+    resp.status(400);
+    resp.send("invalid referrer " + referrer);
+    return;
+  }
+  return resp.view("src/web/public/components/places.html", {
+    places: cache.getPlaces(workbookId),
+  });
+});
 
 fastify.post("/ui/place/set/parent", async (req, resp) => {
   const params: any = req.query;
@@ -153,19 +227,8 @@ fastify.post("/ui/place/set/parent", async (req, resp) => {
     resp.status(400);
     return;
   }
-  const place = getPlace(placeId);
+  const place = cache.getCachedResult(placeId);
   return resp.view("src/web/public/components/place_parent_hidden.html", {
     place: place,
   });
 });
-
-export default async (creds: Credentials) => {
-  const settings = await getAppSettings(creds);
-  const hierarchy = getHierarchy(settings);
-  const roles = getRoles(settings);
-  initAppState(creds, hierarchy, roles);
-  fastify.listen({ port: 3000 }, (err, address) => {
-    if (err) throw err;
-    console.log(`server is listening on ${address}`);
-  });
-};

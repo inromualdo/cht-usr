@@ -2,7 +2,7 @@
     <div class="field">
         <div class="control">
             <div class="select">
-                <select name="type" hx-post="ui/place/update" hx-trigger="change" hx-target="#place_form_parent"
+                <select name="type" hx-post="ui/place/update" hx-trigger="change" hx-target="#form_place_create"
                     hx-swap="innerHTML">
                     {%- for place in hierarchy %}
                     <option value="{{place}}">{{place}}</option>

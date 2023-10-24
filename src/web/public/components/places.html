@@ -1,7 +1,3 @@
-{%- if places.length > 0 %}
-<div class="buttons is-right">
-    <button class="button is-dark" hx-post="/workbook/submit">Create</button>
-</div>
 <table class="table is-striped is-fullwidth">
     <thead>
         <tr>
@@ -12,6 +8,7 @@
             <th>Role</th>
             <th>Sex</th>
             <th>Phone</th>
+            <th>-</th>
         </tr>
     </thead>
     <tbody>
@@ -24,8 +21,8 @@
             <td>{{place.contact.role}}</td>
             <td>{{place.contact.sex}}</td>
             <td>{{place.contact.phone}}</td>
+            <td>{{place.state.status}}</td>
         </tr>
         {%- endfor%}
     </tbody>
 </table>
-{% endif %}
