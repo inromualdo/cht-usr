@@ -1,15 +1,14 @@
 import axios from "axios";
 
-export type contactConf = {
+export type contactType = {
   id: string;
-  createForm: string;
   parents?: string[];
+  person: boolean;
 };
 
 export type AppSettings = {
-  hierarchyTypes: string[];
   roles: string[];
-  contactTypes: contactConf[];
+  hierarchy: contactType[];
 };
 
 export type Credentials = {
@@ -59,15 +58,8 @@ export class ChtApi {
     const resp = await axios.get(url);
     const { settings: respBody } = resp.data;
     return {
-      hierarchyTypes: respBody["place_hierarchy_types"],
       roles: Object.keys(respBody["roles"]),
-      contactTypes: respBody["contact_types"].map((item: any) => {
-        return {
-          id: item.id,
-          createForm: item.create_form,
-          parents: item.parents,
-        };
-      }),
+      hierarchy: respBody["contact_types"],
     };
   };
 

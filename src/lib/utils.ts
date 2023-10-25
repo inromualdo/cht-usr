@@ -1,45 +1,27 @@
 import { AppSettings } from "./cht";
 
-type person = {
+type hierarchyPlace = {
   contactType: string;
-  createForm: string;
-};
-
-type placeData = {
-  createForm: string;
-};
-
-type place = {
-  data: placeData;
-  person?: person;
-  parent?: string;
-  children: string[];
+  personContactType?: string;
+  parentPlaceContactType?: string;
 };
 
 export type Hierarchy = {
-  [key: string]: place;
+  [key: string]: hierarchyPlace;
 };
 
+// https://docs.communityhealthtoolkit.org/apps/reference/app-settings/hierarchy/
 export const getHierarchy = (settings: AppSettings): Hierarchy => {
   const places: Hierarchy = {};
-  settings.contactTypes.forEach((item) => {
-    if (settings.hierarchyTypes.includes(item.id)) {
+  settings.hierarchy.forEach((item) => {
+    if (!item.person) {
       places[item.id] = {
-        data: { createForm: item.createForm },
-        children: [],
-        parent: item.parents?.[0],
+        contactType: item.id,
+        parentPlaceContactType: item.parents?.[0],
       };
-      item.parents?.forEach((parentId) => {
-        const parent = places[parentId];
-        parent.children.push(item.id);
-        places[parentId] = parent;
-      });
     } else {
-      item.parents?.forEach((parentId) => {
-        places[parentId].person = {
-          contactType: item.id,
-          createForm: item.createForm,
-        };
+      item.parents?.forEach((place) => {
+        places[place].personContactType = item.id;
       });
     }
   });

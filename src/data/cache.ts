@@ -59,7 +59,7 @@ export class MemCache {
   newWorkbook = (name: string): string => {
     const id = name.toLowerCase().split(" ").join("");
     const places = Object.keys(this.hierarchy).filter(
-      (key) => !this.hierarchy!![key].parent
+      (key) => !this.hierarchy!![key].parentPlaceContactType
     );
     const active = places[0];
     const workflowState: workBookState = { id: id, places: new Map() };
@@ -136,7 +136,7 @@ export class MemCache {
   };
 
   getParentType = (placeType: string): string | undefined => {
-    return this.hierarchy!![placeType].parent;
+    return this.hierarchy!![placeType].parentPlaceContactType;
   };
 
   findPlace = async (
@@ -190,15 +190,14 @@ export class MemCache {
     return data;
   };
 
-  buildPersonPayload = (person: person): PersonPayload => {
-    const data: PersonPayload = {
+  buildPersonPayload = (contactType: string, person: person): PersonPayload => {
+    return {
       name: person.name,
       phone: person.phone,
       sex: person.sex,
       type: "contact",
-      contact_type: "person",
+      contact_type: contactType,
     };
-    return data;
   };
 
   buildPlacePayload = (place: place): PlacePayload => {
@@ -206,7 +205,10 @@ export class MemCache {
       name: place.name,
       type: "contact",
       contact_type: place.type,
-      contact: this.buildPersonPayload(place.contact),
+      contact: this.buildPersonPayload(
+        this.hierarchy[place.type].personContactType!!,
+        place.contact
+      ),
     };
     if (place.parent) {
       data.parent = this.getRemoteId(place.parent.id);
