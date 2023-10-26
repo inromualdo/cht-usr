@@ -1,0 +1,23 @@
+<form autocomplete="off">
+    <div class="field is-grouped">
+        <div class="control">
+            <div class="select">
+                <select name="type" hx-post="/ui/place/update" hx-trigger="change" hx-target="#place_form_parent"
+                    hx-swap="outerHTML">
+                    {%- for place in hierarchy %}
+                    <option value="{{place}}" {% if pagePlaceType==place %}selected{%endif%}>{{place}}</option>
+                    {%- endfor%}
+                </select>
+            </div>
+        </div>
+        <div class="control">
+            <div class="select">
+                <select name="op" hx-post="/ui/place/update" hx-trigger="change" hx-target="#place_form_parent"
+                    hx-swap="outerHTML">
+                    <option value="new" {% if op=="new" %}selected{%endif%}>New</option>
+                    <option value="bulk" {% if op=="bulk" %}selected{%endif%}>Bulk</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</form>

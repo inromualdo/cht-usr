@@ -1,11 +1,8 @@
 <div id="workflow-content" class="tile is-parent p-0">
     <div class="tile is-4 is-child column">
         <div class="tile is-child">
-            {% include "components/workflow_header.html" %}
-            <div id="place_form_parent">
-                <h5 id="form_place_create_header" class="title is-5">New {{pagePlaceType}}</h5>
-                {% include "components/place_create.html" %}
-            </div>
+            {% include "components/place_type_select.html" %}
+            {% include "workbook/content_form.html" %}
         </div>
     </div>
     <div class="tile is-child column" hx-ext="sse" sse-connect="/jobs/status">
@@ -15,7 +12,7 @@
         </div>
         <div id="places_parent" class="tile is-child" hx-get="/ui/workflow/places" hx-target="table"
             hx-trigger="sse:status_change">
-            {% include "components/places.html" %}
+            {% include "place/list.html" %}
         </div>
     </div>
 </div>

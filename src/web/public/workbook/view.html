@@ -10,12 +10,10 @@
 </head>
 
 <body>
-    <section id="header" class="section pb-3" hx-swap-oob="true">
-        <h5 class="title">{{title}}</h5>
-    </section>
+    {% include "workbook/view_header.html" %}
     <section class="section pt-3">
         <div id="container">
-            {% include "content.html" %}
+            {% include "workbook/content.html" %}
         </div>
     </section>
 </body>

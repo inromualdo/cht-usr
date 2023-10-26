@@ -48,7 +48,7 @@ fastify.get("/", async (req, resp) => {
 });
 
 fastify.get("/ui/workbook/new", async (req, resp) => {
-  return resp.view("src/web/public/components/workbook_create.html", {});
+  return resp.view("src/web/public/workbook/create_form.html", {});
 });
 
 fastify.post("/workbook/add", async (req, resp) => {
@@ -64,20 +64,29 @@ fastify.get("/workbook/:id", async (req, resp) => {
   const id = params.id;
   const placeTypes = cache.getPlaceTypes();
 
+  const queryParams: any = req.query;
+  const placeType = queryParams.type || placeTypes[0];
+  const op = queryParams.op || "new";
+
   const tmplData = {
     title: id,
     hierarchy: cache.getPlaceTypes(),
     places: cache.getPlaces(id),
     userRoles: cache.getUserRoles(),
-    pagePlaceType: placeTypes[0],
-    hasParent: cache.getParentType(placeTypes[0]),
+    pagePlaceType: placeType,
+    op: op,
+    hasParent: cache.getParentType(placeType),
   };
 
   const isHxReq = req.headers["hx-request"];
   if (isHxReq) {
-    return resp.view("src/web/public/workflow.html", tmplData);
+    const content = renderEngine.renderFileSync(
+      "workbook/content.html",
+      tmplData
+    );
+    return content;
   }
-  return resp.view("src/web/public/workbook.html", tmplData);
+  return resp.view("src/web/public/workbook/view.html", tmplData);
 });
 
 const validatePlace = (
@@ -115,7 +124,7 @@ const handleCreatePlace = async (
 
   const results = validatePlace(data);
   if (!results.dataValid) {
-    return resp.view("src/web/public/components/place_create.html", {
+    return resp.view("src/web/public/place/create_form.html", {
       pagePlaceType: data.place_type,
       userRoles: cache.getUserRoles(),
       hasParent: cache.getParentType(data.place_type),
@@ -124,7 +133,6 @@ const handleCreatePlace = async (
     });
   }
 
-  const idSuffix = new Date().getMilliseconds().toString();
   const p: place = {
     name: data.place_name,
     type: data.place_type,
@@ -145,20 +153,17 @@ const handleCreatePlace = async (
 
   cache.addPlace(workbookId, p);
 
-  const form = renderEngine.renderFileSync("components/place_create.html", {
+  const form = renderEngine.renderFileSync("place/create_form.html", {
     pagePlaceType: data.place_type,
     userRoles: cache.getUserRoles(),
     hasParent: !!cache.getParentType(data.place_type),
   });
+  const list = renderEngine.renderFileSync("place/list.html", {
+    oob: true,
+    places: cache.getPlaces(workbookId),
+  });
 
-  const content = renderEngine.renderFileSync(
-    "components/content_update.html",
-    {
-      places: cache.getPlaces(workbookId),
-    }
-  );
-
-  return form + content;
+  return form + list;
 };
 
 const handleBulkCreatePlaces = async (
@@ -208,23 +213,17 @@ const handleBulkCreatePlaces = async (
   });
   await once(parser, "finish");
 
-  const form = renderEngine.renderFileSync(
-    "components/place_bulk_create.html",
-    {
-      pagePlaceType: placeType,
-      userRoles: cache.getUserRoles(),
-      hasParent: !!cache.getParentType(placeType),
-    }
-  );
+  const form = renderEngine.renderFileSync("place/bulk_create_form.html", {
+    pagePlaceType: placeType,
+    userRoles: cache.getUserRoles(),
+    hasParent: !!cache.getParentType(placeType),
+  });
+  const list = renderEngine.renderFileSync("place/list.html", {
+    oob: true,
+    places: cache.getPlaces(workbookId),
+  });
 
-  const content = renderEngine.renderFileSync(
-    "components/content_update.html",
-    {
-      places: cache.getPlaces(workbookId),
-    }
-  );
-
-  return form + content;
+  return form + list;
 };
 
 fastify.post("/workbook/:id", async (req, resp) => {
@@ -287,7 +286,7 @@ fastify.get("/ui/workflow/places", async (req, resp) => {
     resp.send("invalid referrer " + referrer);
     return;
   }
-  return resp.view("src/web/public/components/places.html", {
+  return resp.view("src/web/public/place/list.html", {
     places: cache.getPlaces(workbookId),
   });
 });
@@ -296,35 +295,13 @@ fastify.post("/ui/place/update", async (req, resp) => {
   const data: any = req.body;
   const placeType = data.type;
   const op = data.op || "new";
-  let form, header;
-  if (op === "new") {
-    form = renderEngine.renderFileSync("components/place_create.html", {
-      pagePlaceType: placeType,
-      userRoles: cache.getUserRoles(),
-      hasParent: cache.getParentType(placeType),
-    });
-    header = renderEngine.parseAndRenderSync(
-      '<h5 id="form_place_create_header" class="title is-5" hx-swap-oob="true">New {{pagePlaceType}}</h5>',
-      {
-        pagePlaceType: placeType,
-      }
-    );
-  } else if (op === "bulk") {
-    form = renderEngine.renderFileSync("components/place_bulk_create.html", {
-      pagePlaceType: placeType,
-      userRoles: cache.getUserRoles(),
-      hasParent: cache.getParentType(placeType),
-    });
-    header = renderEngine.parseAndRenderSync(
-      '<h5 id="form_place_create_header" class="title is-5" hx-swap-oob="true">Bulk Import {{pagePlaceType}}(s)</h5>',
-      {
-        pagePlaceType: placeType,
-      }
-    );
-  } else {
-    throw new Error("unsupported operation");
-  }
-  return form + header;
+  resp.header("HX-Replace-Url", `?type=${placeType}&op=${op}`);
+  return renderEngine.renderFileSync("workbook/content_form.html", {
+    op: op,
+    pagePlaceType: placeType,
+    userRoles: cache.getUserRoles(),
+    hasParent: cache.getParentType(placeType),
+  });
 });
 
 fastify.post("/ui/place/set/parent", async (req, resp) => {
