@@ -4,17 +4,22 @@
   "main": "dist/index.js",
   "dependencies": {
     "@fastify/formbody": "^7.4.0",
+    "@fastify/multipart": "^8.0.0",
     "@fastify/view": "^8.2.0",
     "@types/node": "^20.8.8",
     "axios": "^1.5.1",
+    "csv": "^6.3.5",
     "fastify": "^4.23.2",
     "fastify-sse-v2": "^3.1.2",
     "libphonenumber-js": "^1.10.48",
     "liquidjs": "^10.9.2",
     "pino-pretty": "^10.2.3",
-    "typescript": "^5.2.2"
+    "typescript": "^5.2.2",
+    "uuid": "^9.0.1"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "@types/uuid": "^9.0.6"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },

@@ -1,11 +1,15 @@
-import Fastify from "fastify";
+import Fastify, { FastifyReply, FastifyRequest } from "fastify";
 import view from "@fastify/view";
 import formbody from "@fastify/formbody";
+import multipart from "@fastify/multipart";
 import { Liquid } from "liquidjs";
 import { FastifySSEPlugin } from "fastify-sse-v2";
 import { MemCache, place } from "../data/cache";
 import { UploadManager } from "../data/job";
 import { isValidPhoneNumber } from "libphonenumber-js";
+import { stringify } from "csv-stringify/sync";
+import { parse } from "csv";
+import { once } from "events";
 
 let cache: MemCache;
 let uploadManager: UploadManager;
@@ -33,6 +37,7 @@ fastify.register(view, {
   },
 });
 fastify.register(formbody);
+fastify.register(multipart);
 fastify.register(FastifySSEPlugin);
 
 fastify.get("/", async (req, resp) => {
@@ -75,23 +80,6 @@ fastify.get("/workbook/:id", async (req, resp) => {
   return resp.view("src/web/public/workbook.html", tmplData);
 });
 
-fastify.post("/workbook/ui/place/update", async (req, resp) => {
-  const data: any = req.body;
-  const placeType = data.type;
-  const form = renderEngine.renderFileSync("components/place_create.html", {
-    pagePlaceType: placeType,
-    userRoles: cache.getUserRoles(),
-    hasParent: cache.getParentType(placeType),
-  });
-  const header = renderEngine.parseAndRenderSync(
-    '<h5 id="form_place_create_header" class="title is-5" hx-swap-oob="true">New {{pagePlaceType}}</h5>',
-    {
-      pagePlaceType: placeType,
-    }
-  );
-  return form + header;
-});
-
 const validatePlace = (
   data: any
 ): {
@@ -109,7 +97,10 @@ const validatePlace = (
   };
 };
 
-fastify.post("/workbook/:id", async (req, resp) => {
+const handleCreatePlace = async (
+  req: FastifyRequest,
+  resp: FastifyReply
+): Promise<any> => {
   const params: any = req.params;
   const workbookId = params.id;
 
@@ -135,11 +126,9 @@ fastify.post("/workbook/:id", async (req, resp) => {
 
   const idSuffix = new Date().getMilliseconds().toString();
   const p: place = {
-    id: "place::" + idSuffix,
     name: data.place_name,
     type: data.place_type,
     contact: {
-      id: "person::" + idSuffix,
       name: data.contact_name,
       phone: data.contact_phone,
       sex: data.contact_sex,
@@ -156,12 +145,95 @@ fastify.post("/workbook/:id", async (req, resp) => {
 
   cache.addPlace(workbookId, p);
 
-  return resp.view("src/web/public/components/content_update.html", {
+  const form = renderEngine.renderFileSync("components/place_create.html", {
     pagePlaceType: data.place_type,
     userRoles: cache.getUserRoles(),
     hasParent: !!cache.getParentType(data.place_type),
-    places: cache.getPlaces(workbookId),
   });
+
+  const content = renderEngine.renderFileSync(
+    "components/content_update.html",
+    {
+      places: cache.getPlaces(workbookId),
+    }
+  );
+
+  return form + content;
+};
+
+const handleBulkCreatePlaces = async (
+  req: FastifyRequest,
+  resp: FastifyReply
+): Promise<any> => {
+  const params: any = req.params;
+  const workbookId = params.id;
+
+  const fileData: any = await req.file();
+  const csvBuf = await fileData.toBuffer();
+  const parser = parse(csvBuf, { delimiter: ",", from_line: 1 });
+
+  let parent: any;
+  if (fileData.fields["place_parent"]) {
+    const result = cache.getCachedResult(
+      fileData.fields["place_parent"].value
+    )!!;
+    parent = {
+      id: result.id,
+      name: result.name,
+    };
+  }
+  const placeType = fileData.fields["place_type"].value;
+  const userRole = fileData.fields["contact_role"].value;
+
+  let columns: string[];
+  parser.on("data", function (row: string[]) {
+    if (!columns) {
+      columns = row;
+    } else {
+      const p: place = {
+        name: row[columns.indexOf("place")],
+        type: placeType,
+        contact: {
+          name: row[columns.indexOf("contact")],
+          phone: row[columns.indexOf("phone")],
+          sex: row[columns.indexOf("sex")],
+          role: userRole,
+        },
+      };
+      if (parent) {
+        p.parent = parent;
+      }
+      cache.addPlace(workbookId, p);
+    }
+  });
+  await once(parser, "finish");
+
+  const form = renderEngine.renderFileSync(
+    "components/place_bulk_create.html",
+    {
+      pagePlaceType: placeType,
+      userRoles: cache.getUserRoles(),
+      hasParent: !!cache.getParentType(placeType),
+    }
+  );
+
+  const content = renderEngine.renderFileSync(
+    "components/content_update.html",
+    {
+      places: cache.getPlaces(workbookId),
+    }
+  );
+
+  return form + content;
+};
+
+fastify.post("/workbook/:id", async (req, resp) => {
+  const queryParams: any = req.query;
+  if (queryParams?.bulk === "1") {
+    return handleBulkCreatePlaces(req, resp);
+  } else {
+    return handleCreatePlace(req, resp);
+  }
 });
 
 fastify.post("/workbook/search/parent", async (req, resp) => {
@@ -220,6 +292,41 @@ fastify.get("/ui/workflow/places", async (req, resp) => {
   });
 });
 
+fastify.post("/ui/place/update", async (req, resp) => {
+  const data: any = req.body;
+  const placeType = data.type;
+  const op = data.op || "new";
+  let form, header;
+  if (op === "new") {
+    form = renderEngine.renderFileSync("components/place_create.html", {
+      pagePlaceType: placeType,
+      userRoles: cache.getUserRoles(),
+      hasParent: cache.getParentType(placeType),
+    });
+    header = renderEngine.parseAndRenderSync(
+      '<h5 id="form_place_create_header" class="title is-5" hx-swap-oob="true">New {{pagePlaceType}}</h5>',
+      {
+        pagePlaceType: placeType,
+      }
+    );
+  } else if (op === "bulk") {
+    form = renderEngine.renderFileSync("components/place_bulk_create.html", {
+      pagePlaceType: placeType,
+      userRoles: cache.getUserRoles(),
+      hasParent: cache.getParentType(placeType),
+    });
+    header = renderEngine.parseAndRenderSync(
+      '<h5 id="form_place_create_header" class="title is-5" hx-swap-oob="true">Bulk Import {{pagePlaceType}}(s)</h5>',
+      {
+        pagePlaceType: placeType,
+      }
+    );
+  } else {
+    throw new Error("unsupported operation");
+  }
+  return form + header;
+});
+
 fastify.post("/ui/place/set/parent", async (req, resp) => {
   const params: any = req.query;
   const placeId = params.id;
@@ -231,4 +338,9 @@ fastify.post("/ui/place/set/parent", async (req, resp) => {
   return resp.view("src/web/public/components/place_parent_hidden.html", {
     place: place,
   });
+});
+
+fastify.get("/files/template", async (req, resp) => {
+  const columns = ["place", "contact", "sex", "phone"];
+  return stringify([columns]);
 });

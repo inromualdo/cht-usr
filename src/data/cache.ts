@@ -6,9 +6,10 @@ import {
   UserPayload,
 } from "../lib/cht";
 import { Hierarchy } from "../lib/utils";
+import { v4 as uuidv4 } from "uuid";
 
 export type person = {
-  id: string;
+  id?: string;
   name: string;
   phone: string;
   sex: string;
@@ -16,7 +17,7 @@ export type person = {
 };
 
 export type place = {
-  id: string;
+  id?: string;
   name: string;
   type: string;
   contact: person;
@@ -85,6 +86,9 @@ export class MemCache {
     if (!workbook) {
       throw new Error("workbook does not exist");
     }
+    const id = uuidv4();
+    data.id = "place::" + id;
+    data.contact.id = "person::" + id;
     const places = workbook.places.get(data.type) || [];
     places.push(data);
     this.idMap.set(data.id, undefined);
@@ -101,8 +105,8 @@ export class MemCache {
     for (const placeType of this.getPlaceTypes()) {
       const data = workbook.places.get(placeType) || [];
       data.forEach((place) => {
-        if (this.jobState.has(place.id)) {
-          const state = this.jobState.get(place.id);
+        if (this.jobState.has(place.id!!)) {
+          const state = this.jobState.get(place.id!!);
           if (state) {
             place.state = { status: state.toString() };
           }
@@ -147,7 +151,7 @@ export class MemCache {
     const localResults = this.getPlaces(workbookId)
       .filter((place) => place.name.includes(searchStr))
       .map((place) => {
-        return { id: place.id, name: place.name };
+        return { id: place.id!!, name: place.name };
       });
     const remoteResults = await this.chtApi.searchPlace(placeType, searchStr);
     remoteResults.forEach((result) => this.setRemoteId(result.id, result.id));

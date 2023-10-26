@@ -38,8 +38,8 @@ export class UploadManager {
           (place) => !place.state || place.state!!.status == jobStatus.FAILURE
         )
         .forEach((place) => {
-          batch.placeIds.push(place.id);
-          this.cache.setJobState(place.id, jobStatus.PENDING);
+          batch.placeIds.push(place.id!!);
+          this.cache.setJobState(place.id!!, jobStatus.PENDING);
         });
       batches.push(batch);
     }
@@ -57,11 +57,7 @@ export class UploadManager {
       this.cache.setJobState(placeId, jobStatus.PENDING);
       this.publishEvent();
       try {
-        const place = this.cache.getPlace(
-          job.workbookId,
-          job.placeType,
-          placeId
-        );
+        let place = this.cache.getPlace(job.workbookId, job.placeType, placeId);
         const { place: remotePlaceId, contact } = await this.uploadPlace(place);
         this.cache.setJobState(placeId, jobStatus.SUCCESS);
       } catch (err) {
@@ -80,11 +76,11 @@ export class UploadManager {
     username: string;
     pass: string;
   }> => {
-    let placeId = this.cache.getRemoteId(place.id);
+    let placeId = this.cache.getRemoteId(place.id!!);
     if (!placeId) {
       const placePayload = this.cache.buildPlacePayload(place);
       placeId = await this.chtApi.createPlace(placePayload);
-      this.cache.setRemoteId(place.id, placeId);
+      this.cache.setRemoteId(place.id!!, placeId);
     }
 
     // why...we don't get a contact id when we create a place with a contact defined.
@@ -99,7 +95,6 @@ export class UploadManager {
       place.contact.role
     );
     const { username, pass } = await this.tryCreateUser(userPayload);
-
     return {
       place: placeId,
       contact: contactId,
@@ -119,13 +114,15 @@ export class UploadManager {
         return { username: userPayload.username, pass: userPayload.password };
       } catch (err: any) {
         retryCount++;
+        console.error("upload manager", err.response.data);
         if (err?.response?.status === 400) {
           const msg = err.response.data;
-          console.error("upload manager", msg);
           if (msg.includes("already taken")) {
-            userPayload.username = username.concat(
-              "_" + Math.floor(Math.random() * (10 ^ (retryCount + 1)))
+            const randomNumber = Math.floor(
+              Math.random() * (10 ^ (retryCount + 1))
             );
+            username = username.concat(randomNumber.toString());
+            userPayload.username = username;
           } else {
             throw err;
           }
