@@ -51,7 +51,11 @@ export default async function workbook(fastify: FastifyInstance) {
         "src/public/workbook/content.html",
         tmplData
       );
-      return content;
+      const header = await fastify.view(
+        "src/public/workbook/view_header.html",
+        tmplData
+      );
+      return content + header;
     }
 
     return resp.view("src/public/workbook/view.html", tmplData);
