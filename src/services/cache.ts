@@ -6,7 +6,7 @@ import {
 } from "../lib/cht";
 import { Hierarchy } from "../lib/utils";
 import { v4 as uuidv4 } from "uuid";
-import { workBookState, jobStatus, place, person } from "./models";
+import { workBookState, uploadState, place, person } from "./models";
 
 export class MemCache {
   private hierarchy: Hierarchy;
@@ -14,7 +14,7 @@ export class MemCache {
   private workbooks: Map<string, workBookState>;
   private searchResultCache: Map<string, PlaceSearchResult> = new Map();
   private idMap: Map<string, string | undefined> = new Map(); //<local> - <remote> place id map
-  private jobState: Map<string, jobStatus> = new Map();
+  private jobState: Map<string, uploadState> = new Map();
 
   constructor(hierachy: Hierarchy, userRoles: string[]) {
     this.hierarchy = hierachy;
@@ -202,7 +202,7 @@ export class MemCache {
     return this.idMap.get(id);
   };
 
-  setJobState = (jobId: string, status: jobStatus) => {
+  setJobState = (jobId: string, status: uploadState) => {
     this.jobState.set(jobId, status);
   };
 

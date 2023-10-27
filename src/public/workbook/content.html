@@ -5,11 +5,11 @@
             {% include "workbook/content_form.html" %}
         </div>
     </div>
-    <div class="tile is-child column" hx-ext="sse" sse-connect="/place/job/status">
+    <div class="tile is-child column" hx-ext="sse" sse-connect="/place/job/status?workbook={{workbookId}}">
         <div class="buttons is-right">
             <button class="button is-dark" hx-post="/places" hx-target="this" hx-swap="outerHTML">Create</button>
         </div>
-        <div id="places_parent" class="tile is-child" hx-get="/places" hx-target="table" hx-trigger="sse:status_change">
+        <div id="places_parent" class="tile is-child" hx-get="/places" hx-target="table" hx-trigger="sse:state_change">
             {% include "place/list.html" %}
         </div>
     </div>

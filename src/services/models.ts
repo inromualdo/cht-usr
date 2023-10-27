@@ -25,7 +25,7 @@ export type workBookState = {
   places: Map<string, place[]>;
 };
 
-export enum jobStatus {
+export enum uploadState {
   SUCCESS = "success",
   FAILURE = "failure",
   PENDING = "pending",

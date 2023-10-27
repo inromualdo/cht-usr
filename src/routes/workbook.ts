@@ -37,6 +37,7 @@ export default async function workbook(fastify: FastifyInstance) {
 
     const tmplData = {
       title: id,
+      workbookId: id,
       hierarchy: cache.getPlaceTypes(),
       places: cache.getPlaces(id),
       userRoles: cache.getUserRoles(),

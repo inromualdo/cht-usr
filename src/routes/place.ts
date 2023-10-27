@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { stringify } from "csv-stringify/sync";
+import { jobState } from "../services/job";
 
 export default async function place(fastify: FastifyInstance) {
   const { cache, cht, jobManager } = fastify;
@@ -86,12 +87,15 @@ export default async function place(fastify: FastifyInstance) {
   });
 
   fastify.get("/place/job/status", async (req, resp) => {
+    const queryParams: any = req.query;
+    const workbookId = queryParams.workbook!!;
     resp.hijack();
-    const cb = (id: string) => {
-      resp.sse({ event: "status_change", data: "Some message" });
+    const listener = (arg: jobState) => {
+      if (arg.workbookId === workbookId)
+        resp.sse({ event: "state_change", data: arg.placeId });
     };
-    jobManager.listen(cb);
-    req.socket.on("close", () => jobManager.removeListener(cb));
+    jobManager.on("state", listener);
+    req.socket.on("close", () => jobManager.removeListener("state", listener));
   });
 
   fastify.get("/files/template", async (req, resp) => {
