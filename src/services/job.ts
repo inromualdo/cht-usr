@@ -1,5 +1,6 @@
 import { ChtApi, UserPayload } from "../lib/cht";
-import { MemCache, workBookState, jobStatus, place } from "./cache";
+import { MemCache } from "./cache";
+import { workBookState, jobStatus, place } from "./models";
 
 type batch = {
   workbookId: string;
@@ -17,9 +18,7 @@ export class UploadManager {
   }
 
   doUpload = (workbookId: string, callback?: { (id: string): void }) => {
-    const batches = this.prepareUpload(
-      this.cache.getWorkbookState(workbookId)!!
-    );
+    const batches = this.prepareUpload(this.cache.getWorkbook(workbookId)!!);
     if (callback) this.callbacks.push(callback);
     this.upload(batches);
   };
@@ -69,18 +68,18 @@ export class UploadManager {
   };
 
   private uploadPlace = async (
-    place: place
+    placeData: place
   ): Promise<{
     contact: string;
     place: string;
     username: string;
     pass: string;
   }> => {
-    let placeId = this.cache.getRemoteId(place.id!!);
+    let placeId = this.cache.getRemoteId(placeData.id!!);
     if (!placeId) {
-      const placePayload = this.cache.buildPlacePayload(place);
+      const placePayload = this.cache.buildPlacePayload(placeData);
       placeId = await this.chtApi.createPlace(placePayload);
-      this.cache.setRemoteId(place.id!!, placeId);
+      this.cache.setRemoteId(placeData.id!!, placeId);
     }
 
     // why...we don't get a contact id when we create a place with a contact defined.
@@ -91,8 +90,8 @@ export class UploadManager {
     const userPayload: UserPayload = this.cache.buildUserPayload(
       placeId,
       contactId,
-      place.contact.name,
-      place.contact.role
+      placeData.contact.name,
+      placeData.contact.role
     );
     const { username, pass } = await this.tryCreateUser(userPayload);
     return {

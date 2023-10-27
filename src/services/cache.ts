@@ -1,5 +1,4 @@
 import {
-  ChtApi,
   PersonPayload,
   PlacePayload,
   PlaceSearchResult,
@@ -7,42 +6,9 @@ import {
 } from "../lib/cht";
 import { Hierarchy } from "../lib/utils";
 import { v4 as uuidv4 } from "uuid";
-
-export type person = {
-  id?: string;
-  name: string;
-  phone: string;
-  sex: string;
-  role: string;
-};
-
-export type place = {
-  id?: string;
-  name: string;
-  type: string;
-  contact: person;
-  parent?: {
-    id: string;
-    name: string;
-  };
-  state?: {
-    status: string;
-  };
-};
-
-export type workBookState = {
-  id: string;
-  places: Map<string, place[]>;
-};
-
-export enum jobStatus {
-  SUCCESS = "success",
-  FAILURE = "failure",
-  PENDING = "pending",
-}
+import { workBookState, jobStatus, place, person } from "./models";
 
 export class MemCache {
-  private chtApi: ChtApi;
   private hierarchy: Hierarchy;
   private userRoles: string[];
   private workbooks: Map<string, workBookState>;
@@ -50,16 +16,20 @@ export class MemCache {
   private idMap: Map<string, string | undefined> = new Map(); //<local> - <remote> place id map
   private jobState: Map<string, jobStatus> = new Map();
 
-  constructor(chtApi: ChtApi, hierarchy: Hierarchy, roles: string[]) {
-    this.chtApi = chtApi;
-    this.userRoles = roles;
-    this.hierarchy = hierarchy;
+  constructor(hierachy: Hierarchy, userRoles: string[]) {
+    this.hierarchy = hierachy;
+    this.userRoles = userRoles;
     this.workbooks = new Map();
   }
 
-  newWorkbook = (name: string): string => {
+  /**
+   *
+   * @param name workbook name
+   * @returns workbook id
+   */
+  saveWorkbook = (name: string): string => {
     const id = name.toLowerCase().split(" ").join("");
-    const places = Object.keys(this.hierarchy).filter(
+    const places = Object.keys(this.hierarchy!!).filter(
       (key) => !this.hierarchy!![key].parentPlaceContactType
     );
     const active = places[0];
@@ -69,11 +39,12 @@ export class MemCache {
     return id;
   };
 
-  getWorkbooks = (): string[] => {
-    return Array.from(this.workbooks.keys());
-  };
-
-  getWorkbookState = (id: string): workBookState => {
+  /**
+   *
+   * @param id workbook id
+   * @returns workBookState
+   */
+  getWorkbook = (id: string): workBookState => {
     const workbook = this.workbooks.get(id);
     if (!workbook) {
       throw new Error("workbook does not exist");
@@ -81,7 +52,21 @@ export class MemCache {
     return workbook;
   };
 
-  addPlace = (workbookId: string, data: place) => {
+  /**
+   *
+   * @returns a list of workbook ids
+   */
+  getWorkbooks = (): string[] => {
+    return Array.from(this.workbooks.keys());
+  };
+
+  /**
+   *
+   * @param workbookId
+   * @param data place data
+   */
+  savePlace = (workbookId: string, data: place) => {
+    console.info("save", data);
     const workbook = this.workbooks.get(workbookId);
     if (!workbook) {
       throw new Error("workbook does not exist");
@@ -96,6 +81,32 @@ export class MemCache {
     workbook.places.set(data.type, places);
   };
 
+  /**
+   *
+   * @param workbookId workbbook the place belongs to
+   * @param placeType
+   * @param placeId
+   * @returns place
+   */
+  getPlace = (
+    workbookId: string,
+    placeType: string,
+    placeId: string
+  ): place => {
+    const workbook = this.workbooks.get(workbookId);
+    if (!workbook) {
+      throw new Error("workbook does not exist");
+    }
+    return workbook.places
+      .get(placeType)!!
+      .find((place) => place.id === placeId)!!;
+  };
+
+  /**
+   *
+   * @param workbookId
+   * @returns list of places in the workbook
+   */
   getPlaces = (workbookId: string): place[] => {
     const workbook = this.workbooks.get(workbookId);
     if (!workbook) {
@@ -117,28 +128,43 @@ export class MemCache {
     return places;
   };
 
-  getPlace = (
-    workbookId: string,
-    placeType: string,
-    placeId: string
-  ): place => {
-    const workbook = this.workbooks.get(workbookId);
-    if (!workbook) {
-      throw new Error("workbook does not exist");
-    }
-    return workbook.places
-      .get(placeType)!!
-      .find((place) => place.id === placeId)!!;
+  /**
+   *
+   * @param hierarchy
+   */
+  setHierarchy = (hierarchy: Hierarchy) => {
+    this.hierarchy = hierarchy;
   };
 
+  /**
+   *
+   * @returns list of place contact types in the hierarchy
+   */
   getPlaceTypes = (): string[] => {
     return Object.keys(this.hierarchy!!);
   };
 
+  /**
+   *
+   * @param roles
+   */
+  setUserRoles = (roles: string[]) => {
+    this.userRoles = roles;
+  };
+
+  /**
+   *
+   * @returns list of configured user roles for the project
+   */
   getUserRoles = (): string[] => {
     return this.userRoles!!;
   };
 
+  /**
+   *
+   * @param placeType
+   * @returns the parent place contact type if any
+   */
   getParentType = (placeType: string): string | undefined => {
     return this.hierarchy!![placeType].parentPlaceContactType;
   };
@@ -148,18 +174,20 @@ export class MemCache {
     placeType: string,
     searchStr: string
   ): Promise<PlaceSearchResult[]> => {
-    const localResults = this.getPlaces(workbookId)
+    const workbook = this.getWorkbook(workbookId);
+    return workbook.places
+      .get(placeType)!!
       .filter((place) => place.name.includes(searchStr))
       .map((place) => {
         return { id: place.id!!, name: place.name };
       });
-    const remoteResults = await this.chtApi.searchPlace(placeType, searchStr);
-    remoteResults.forEach((result) => this.setRemoteId(result.id, result.id));
-    const results: PlaceSearchResult[] = localResults.concat(remoteResults);
+  };
+
+  cacheRemoteSearchResult = (results: PlaceSearchResult[]) => {
     results.forEach((place) => {
+      this.setRemoteId(place.id, place.id);
       this.searchResultCache.set(place.id, place);
     });
-    return results;
   };
 
   getCachedResult = (id: string): PlaceSearchResult | undefined => {
@@ -210,7 +238,7 @@ export class MemCache {
       type: "contact",
       contact_type: place.type,
       contact: this.buildPersonPayload(
-        this.hierarchy[place.type].personContactType!!,
+        this.hierarchy!![place.type].personContactType!!,
         place.contact
       ),
     };

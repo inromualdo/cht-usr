@@ -6,7 +6,7 @@
         <label class="label">Where will these {{pagePlaceType}}(s) belong?</label>
         <div class="control">
             <input id="place_search" name="place_search" type="search" class="input"
-                hx-post="search/parent?type={{pagePlaceType}}" hx-encoding="application/x-www-form-urlencoded"
+                hx-post="/search/parent?type={{pagePlaceType}}" hx-encoding="application/x-www-form-urlencoded"
                 placeholder="start typing to see suggestions" hx-trigger="keyup changed delay:250ms, search"
                 hx-target="#search_results" hx-swap="innerHTML" required {% if data.place_search
                 %}value="{{data.place_search}}" {% endif %} />
