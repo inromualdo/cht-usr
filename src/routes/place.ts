@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { jobState } from "../services/job";
-import { workBookState } from "../services/models";
+import { uploadState, workBookState } from "../services/models";
 
 export default async function place(fastify: FastifyInstance) {
   const { cache, cht, jobManager } = fastify;
@@ -72,13 +72,15 @@ export default async function place(fastify: FastifyInstance) {
   fastify.get("/places/controls", async (req, resp) => {
     const queryParams: any = req.query;
     const workbookId = queryParams.workbook!!;
-    const failed = cache.getFailed(workbookId);
+    const failed = cache.getPlaceByUploadState(workbookId, uploadState.FAILURE);
+    const noStateJobs = cache.getPlaceByUploadState(workbookId, undefined);
     const hasFailedJobs = failed.length > 0;
     return resp.view("src/public/place/controls.html", {
       workbookId: workbookId,
       workbookState: cache.getWorkbookState(workbookId)?.state,
       hasFailedJobs: hasFailedJobs,
       failedJobCount: failed.length,
+      noStateJobCount: noStateJobs.length,
     });
   });
 

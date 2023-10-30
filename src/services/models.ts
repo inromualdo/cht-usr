@@ -34,7 +34,7 @@ export enum uploadState {
 
 export type workbookuploadState = {
   id: string;
-  state: "in_progress" | "done";
+  state: "in_progress" | "done" | "pending";
 };
 
 export type userCredentials = {

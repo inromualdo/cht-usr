@@ -1,10 +1,13 @@
-{%if workbookState == "done"%}
-<a class="button is-dark" href="/files/credentials?workbook={{workbookId}}">Export Credentials</a>
-{%if hasFailedJobs "%}
-<button class="button is-dark" hx-post="/retry/failed?workbook={{workbookId}}" hx-target="this"
-    hx-swap="outerHTML">Retry({{failedJobCount}})</button>
-{%endif%}
-{%else%}
-<button class="button is-dark {%if workbookState == 'in_progress' %}is-loading{%endif%}"
-    hx-post="/places?workbook={{workbookId}}" hx-target="this" hx-swap="outerHTML">Create</button>
-{%endif%}
+<div id="table_controls" class="buttons is-right" {% if oob %} hx-swap-oob="true" {%endif%}>
+    {%if workbookState == "done"%}
+    <a class="button is-dark" href="/files/credentials?workbook={{workbookId}}">Export Credentials</a>
+    {%if hasFailedJobs "%}
+    <button class="button is-dark" hx-post="/retry/failed?workbook={{workbookId}}" hx-target="this"
+        hx-swap="outerHTML">Retry({{failedJobCount}})</button>
+    {%endif%}
+    {%else%}
+    <button class="button is-dark {%if workbookState == 'in_progress' %}is-loading{%endif%}"
+        hx-post="/places?workbook={{workbookId}}" hx-target="this" hx-swap="outerHTML">Create {%if noStateJobCount >
+        0%}({{noStateJobCount}}){%endif%}</button>
+    {%endif%}
+</div>

@@ -6,8 +6,8 @@
         </div>
     </div>
     <div class="tile is-child column" hx-ext="sse" sse-connect="/place/job/status?workbook={{workbookId}}">
-        <div class="buttons is-right" hx-trigger="sse:workbook_state_change"
-            hx-get="/places/controls?workbook={{workbookId}}" hx-target="this" hx-swap="innerHTML">
+        <div hx-trigger="sse:workbook_state_change" hx-get="/places/controls?workbook={{workbookId}}" hx-target="this"
+            hx-swap="innerHTML">
             {% include "place/controls.html" %}
         </div>
         <div id="places_parent" class="tile is-child" hx-get="/places?workbook={{workbookId}}" hx-target="table"

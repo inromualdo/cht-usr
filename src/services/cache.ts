@@ -87,6 +87,9 @@ export class MemCache {
     this.idMap.set(data.id, undefined);
     this.idMap.set(data.contact.id, undefined);
     workbook.places.set(data.type, places);
+    if (workbook.state) {
+      workbook.state.state = "pending";
+    }
   };
 
   /**
@@ -247,9 +250,12 @@ export class MemCache {
     return this.workbooks.get(id)!!.state;
   };
 
-  getFailed = (workbookId: string): place[] => {
-    return this.getPlaces(workbookId).filter(
-      (place) => place.state?.status === uploadState.FAILURE
+  getPlaceByUploadState = (
+    workbookId: string,
+    state?: uploadState
+  ): place[] => {
+    return this.getPlaces(workbookId).filter((place) =>
+      state ? place.state?.status === state : !place.state
     );
   };
 

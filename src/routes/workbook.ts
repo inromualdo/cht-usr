@@ -1,7 +1,7 @@
 import { once } from "events";
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { parse } from "csv";
-import { place } from "../services/models";
+import { place, uploadState } from "../services/models";
 import { validatePlace } from "../services/utils";
 
 export default async function workbook(fastify: FastifyInstance) {
@@ -35,7 +35,8 @@ export default async function workbook(fastify: FastifyInstance) {
     const placeType = queryParams.type || placeTypes[0];
     const op = queryParams.op || "new";
 
-    const failed = cache.getFailed(id);
+    const failed = cache.getPlaceByUploadState(id, uploadState.FAILURE);
+    const noStateJobs = cache.getPlaceByUploadState(id, undefined);
     const hasFailedJobs = failed.length > 0;
 
     const tmplData = {
@@ -46,6 +47,7 @@ export default async function workbook(fastify: FastifyInstance) {
       workbookState: cache.getWorkbookState(id)?.state,
       hasFailedJobs: hasFailedJobs,
       failedJobCount: failed.length,
+      noStateJobCount: noStateJobs.length,
       userRoles: cache.getUserRoles(),
       pagePlaceType: placeType,
       op: op,
@@ -134,8 +136,14 @@ export default async function workbook(fastify: FastifyInstance) {
       oob: true,
       places: cache.getPlaces(workbookId),
     });
-
-    return form + list;
+    const controls = await fastify.view("src/public/place/controls.html", {
+      oob: true,
+      workbookId: workbookId,
+      workbookState: cache.getWorkbookState(workbookId)?.state,
+      noStateJobCount: cache.getPlaceByUploadState(workbookId, undefined)
+        .length,
+    });
+    return form + list + controls;
   };
 
   const handleCreatePlace = async (
@@ -194,7 +202,13 @@ export default async function workbook(fastify: FastifyInstance) {
       oob: true,
       places: cache.getPlaces(workbookId),
     });
-
-    return form + list;
+    const controls = await fastify.view("src/public/place/controls.html", {
+      oob: true,
+      workbookId: workbookId,
+      workbookState: cache.getWorkbookState(workbookId)?.state,
+      noStateJobCount: cache.getPlaceByUploadState(workbookId, undefined)
+        .length,
+    });
+    return form + list + controls;
   };
 }
