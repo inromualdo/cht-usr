@@ -35,11 +35,17 @@ export default async function workbook(fastify: FastifyInstance) {
     const placeType = queryParams.type || placeTypes[0];
     const op = queryParams.op || "new";
 
+    const failed = cache.getFailed(id);
+    const hasFailedJobs = failed.length > 0;
+
     const tmplData = {
       title: id,
       workbookId: id,
       hierarchy: cache.getPlaceTypes(),
       places: cache.getPlaces(id),
+      workbookState: cache.getWorkbookState(id)?.state,
+      hasFailedJobs: hasFailedJobs,
+      failedJobCount: failed.length,
       userRoles: cache.getUserRoles(),
       pagePlaceType: placeType,
       op: op,

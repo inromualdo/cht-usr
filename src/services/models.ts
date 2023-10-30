@@ -23,6 +23,7 @@ export type place = {
 export type workBookState = {
   id: string;
   places: Map<string, place[]>;
+  state?: workbookuploadState;
 };
 
 export enum uploadState {
@@ -30,3 +31,23 @@ export enum uploadState {
   FAILURE = "failure",
   PENDING = "pending",
 }
+
+export type workbookuploadState = {
+  id: string;
+  state: "in_progress" | "done";
+};
+
+export type userCredentials = {
+  user: string;
+  pass: string;
+  place: string;
+  contact: string;
+};
+
+export type placeWithCreds = {
+  placeName: string;
+  placeType: string;
+  placeParent?: string;
+  contactName: string;
+  creds: userCredentials;
+};

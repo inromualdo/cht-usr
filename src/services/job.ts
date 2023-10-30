@@ -1,7 +1,13 @@
 import EventEmitter from "events";
 import { ChtApi, UserPayload } from "../lib/cht";
 import { MemCache } from "./cache";
-import { workBookState, uploadState, place } from "./models";
+import {
+  workBookState,
+  uploadState,
+  place,
+  workbookuploadState,
+  userCredentials,
+} from "./models";
 
 type batch = {
   workbookId: string;
@@ -18,6 +24,7 @@ export type jobState = {
 export class UploadManager extends EventEmitter {
   private cache: MemCache;
   private chtApi: ChtApi;
+  private workbookCancel = new Map<string, boolean>();
   constructor(chtApi: ChtApi, cache: MemCache) {
     super();
     this.cache = cache;
@@ -45,7 +52,7 @@ export class UploadManager extends EventEmitter {
         .forEach((place) => {
           batch.placeIds.push(place.id!!);
           this.cache.setJobState(place.id!!, uploadState.PENDING);
-          this.emitStateChange(workbook.id, place.id!!, uploadState.PENDING);
+          this.emitJobStateChange(workbook.id, place.id!!, uploadState.PENDING);
         });
       batches.push(batch);
     }
@@ -53,34 +60,47 @@ export class UploadManager extends EventEmitter {
   };
 
   private upload = async (batches: batch[]) => {
+    let state: workbookuploadState = {
+      id: batches[0].workbookId,
+      state: "in_progress",
+    };
+    this.cache.setWorkbookUploadState(state.id, state);
+    this.emitWorkbookStateChange(state);
+
     for (const batch of batches) {
       await this.uploadBatch(batch);
     }
+
+    state.state = "done";
+    this.cache.setWorkbookUploadState(state.id, state);
+    this.emitWorkbookStateChange(state);
   };
 
   private uploadBatch = async (job: batch) => {
     for (const placeId of job.placeIds) {
       const place = this.cache.getPlace(job.workbookId, job.placeType, placeId);
       try {
-        await this.uploadPlace(place);
+        const creds = await this.uploadPlace(place);
+        this.cache.setUserCredentials(placeId, creds);
         this.cache.setJobState(placeId, uploadState.SUCCESS);
-        this.emitStateChange(job.workbookId, place.id!!, uploadState.SUCCESS);
+        this.emitJobStateChange(
+          job.workbookId,
+          place.id!!,
+          uploadState.SUCCESS
+        );
       } catch (err) {
-        console.log(err);
+        console.error(err);
         this.cache.setJobState(placeId, uploadState.FAILURE);
-        this.emitStateChange(job.workbookId, place.id!!, uploadState.FAILURE);
+        this.emitJobStateChange(
+          job.workbookId,
+          place.id!!,
+          uploadState.FAILURE
+        );
       }
     }
   };
 
-  private uploadPlace = async (
-    placeData: place
-  ): Promise<{
-    contact: string;
-    place: string;
-    username: string;
-    pass: string;
-  }> => {
+  private uploadPlace = async (placeData: place): Promise<userCredentials> => {
     let placeId = this.cache.getRemoteId(placeData.id!!);
     if (!placeId) {
       const placePayload = this.cache.buildPlacePayload(placeData);
@@ -103,7 +123,7 @@ export class UploadManager extends EventEmitter {
     return {
       place: placeId,
       contact: contactId,
-      username: username,
+      user: username,
       pass: pass,
     };
   };
@@ -139,7 +159,7 @@ export class UploadManager extends EventEmitter {
     throw new Error("could not create user " + userPayload.contact);
   };
 
-  private emitStateChange = (
+  private emitJobStateChange = (
     workbookId: string,
     placeId: string,
     state: uploadState
@@ -150,5 +170,9 @@ export class UploadManager extends EventEmitter {
       state: state,
     };
     this.emit("state", event);
+  };
+
+  private emitWorkbookStateChange = (state: workbookuploadState) => {
+    this.emit("workbook_state", state);
   };
 }

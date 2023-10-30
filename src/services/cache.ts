@@ -4,9 +4,17 @@ import {
   PlaceSearchResult,
   UserPayload,
 } from "../lib/cht";
-import { Hierarchy } from "../lib/utils";
+import { getRoles, Hierarchy } from "../lib/utils";
 import { v4 as uuidv4 } from "uuid";
-import { workBookState, uploadState, place, person } from "./models";
+import {
+  workBookState,
+  uploadState,
+  place,
+  person,
+  workbookuploadState,
+  userCredentials,
+  placeWithCreds,
+} from "./models";
 
 export class MemCache {
   private hierarchy: Hierarchy;
@@ -15,6 +23,7 @@ export class MemCache {
   private searchResultCache: Map<string, PlaceSearchResult> = new Map();
   private idMap: Map<string, string | undefined> = new Map(); //<local> - <remote> place id map
   private jobState: Map<string, uploadState> = new Map();
+  private credList: Map<string, userCredentials> = new Map();
 
   constructor(hierachy: Hierarchy, userRoles: string[]) {
     this.hierarchy = hierachy;
@@ -66,7 +75,6 @@ export class MemCache {
    * @param data place data
    */
   savePlace = (workbookId: string, data: place) => {
-    console.info("save", data);
     const workbook = this.workbooks.get(workbookId);
     if (!workbook) {
       throw new Error("workbook does not exist");
@@ -97,9 +105,16 @@ export class MemCache {
     if (!workbook) {
       throw new Error("workbook does not exist");
     }
-    return workbook.places
+    const place = workbook.places
       .get(placeType)!!
       .find((place) => place.id === placeId)!!;
+    if (this.jobState.has(place.id!!)) {
+      const state = this.jobState.get(place.id!!);
+      if (state) {
+        place.state = { status: state.toString() };
+      }
+    }
+    return place;
   };
 
   /**
@@ -206,6 +221,38 @@ export class MemCache {
     this.jobState.set(jobId, status);
   };
 
+  setUserCredentials = (placeId: string, creds: userCredentials) => {
+    this.credList.set(placeId, creds);
+  };
+
+  getUserCredentials = (workbookId: string): placeWithCreds[] => {
+    return this.getPlaces(workbookId)
+      .filter((place) => place.state?.status === uploadState.SUCCESS)
+      .map((place) => {
+        return {
+          placeName: place.name,
+          placeType: place.type,
+          placeParent: place.parent?.name,
+          contactName: place.contact.name,
+          creds: this.credList.get(place.id!!)!!,
+        } as placeWithCreds;
+      });
+  };
+
+  setWorkbookUploadState = (id: string, state: workbookuploadState) => {
+    this.workbooks.get(id)!!.state = state;
+  };
+
+  getWorkbookState = (id: string): workbookuploadState | undefined => {
+    return this.workbooks.get(id)!!.state;
+  };
+
+  getFailed = (workbookId: string): place[] => {
+    return this.getPlaces(workbookId).filter(
+      (place) => place.state?.status === uploadState.FAILURE
+    );
+  };
+
   buildUserPayload = (
     placeId: string,
     contactId: string,
@@ -222,7 +269,10 @@ export class MemCache {
     return data;
   };
 
-  buildPersonPayload = (contactType: string, person: person): PersonPayload => {
+  buildContactPayload = (
+    contactType: string,
+    person: person
+  ): PersonPayload => {
     return {
       name: person.name,
       phone: person.phone,
@@ -237,7 +287,7 @@ export class MemCache {
       name: place.name,
       type: "contact",
       contact_type: place.type,
-      contact: this.buildPersonPayload(
+      contact: this.buildContactPayload(
         this.hierarchy!![place.type].personContactType!!,
         place.contact
       ),

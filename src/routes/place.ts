@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
-import { stringify } from "csv-stringify/sync";
 import { jobState } from "../services/job";
+import { workBookState } from "../services/models";
 
 export default async function place(fastify: FastifyInstance) {
   const { cache, cht, jobManager } = fastify;
@@ -62,26 +62,29 @@ export default async function place(fastify: FastifyInstance) {
   });
 
   fastify.get("/places", async (req, resp) => {
-    const referrer: string = req.headers["referer"]!!; // idk man, this might be bad
-    const workbookId = new URL(referrer).pathname.replace("/workbook/", "");
-    if (!workbookId) {
-      resp.status(400);
-      resp.send("invalid referrer " + referrer);
-      return;
-    }
+    const queryParams: any = req.query;
+    const workbookId = queryParams.workbook!!;
     return resp.view("src/public/place/list.html", {
       places: cache.getPlaces(workbookId),
     });
   });
 
+  fastify.get("/places/controls", async (req, resp) => {
+    const queryParams: any = req.query;
+    const workbookId = queryParams.workbook!!;
+    const failed = cache.getFailed(workbookId);
+    const hasFailedJobs = failed.length > 0;
+    return resp.view("src/public/place/controls.html", {
+      workbookId: workbookId,
+      workbookState: cache.getWorkbookState(workbookId)?.state,
+      hasFailedJobs: hasFailedJobs,
+      failedJobCount: failed.length,
+    });
+  });
+
   fastify.post("/places", async (req, resp) => {
-    const referrer: string = req.headers["referer"]!!; // idk man, this might be bad
-    const workbookId = new URL(referrer).pathname.replace("/workbook/", "");
-    if (!workbookId) {
-      resp.status(400);
-      resp.send("invalid referrer " + referrer);
-      return;
-    }
+    const queryParams: any = req.query;
+    const workbookId = queryParams.workbook!!;
     jobManager.doUpload(workbookId);
     return '<button class="button is-dark" hx-post="/places" hx-target="this" hx-swap="outerHTML">Create</button>';
   });
@@ -90,16 +93,19 @@ export default async function place(fastify: FastifyInstance) {
     const queryParams: any = req.query;
     const workbookId = queryParams.workbook!!;
     resp.hijack();
-    const listener = (arg: jobState) => {
+    const jobListener = (arg: jobState) => {
       if (arg.workbookId === workbookId)
         resp.sse({ event: "state_change", data: arg.placeId });
     };
-    jobManager.on("state", listener);
-    req.socket.on("close", () => jobManager.removeListener("state", listener));
-  });
-
-  fastify.get("/files/template", async (req, resp) => {
-    const columns = ["place", "contact", "sex", "phone"];
-    return stringify([columns]);
+    jobManager.on("state", jobListener);
+    const workbookStateListener = (arg: workBookState) => {
+      if (arg.id === workbookId)
+        resp.sse({ event: "workbook_state_change", data: arg.id });
+    };
+    jobManager.on("workbook_state", workbookStateListener);
+    req.socket.on("close", () => {
+      jobManager.removeListener("state", jobListener);
+      jobManager.removeListener("workbook_state", workbookStateListener);
+    });
   });
 }
