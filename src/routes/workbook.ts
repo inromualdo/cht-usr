@@ -92,8 +92,9 @@ export default async function workbook(fastify: FastifyInstance) {
 
     let parent: any;
     if (fileData.fields["place_parent"]) {
-      const result = cache.getCachedResult(
-        fileData.fields["place_parent"].value
+      const result = cache.getCachedSearchResult(
+        fileData.fields["place_parent"].value,
+        workbookId
       )!!;
       parent = {
         id: result.id,
@@ -156,7 +157,8 @@ export default async function workbook(fastify: FastifyInstance) {
     const data: any = req.body;
     if (
       cache.getParentType(data.place_type) &&
-      (!data.place_parent || !cache.getCachedResult(data.place_parent))
+      (!data.place_parent ||
+        !cache.getCachedSearchResult(data.place_parent, workbookId))
     ) {
       resp.status(400);
       return;
@@ -184,7 +186,10 @@ export default async function workbook(fastify: FastifyInstance) {
       },
     };
     if (data.place_parent) {
-      const parent = cache.getCachedResult(data.place_parent)!!;
+      const parent = cache.getCachedSearchResult(
+        data.place_parent,
+        workbookId
+      )!!;
       p.parent = {
         id: parent.id,
         name: parent.name,

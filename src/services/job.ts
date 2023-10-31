@@ -78,7 +78,11 @@ export class UploadManager extends EventEmitter {
 
   private uploadBatch = async (job: batch) => {
     for (const placeId of job.placeIds) {
-      const place = this.cache.getPlace(job.workbookId, job.placeType, placeId);
+      const place = this.cache.getPlace(
+        job.workbookId,
+        job.placeType,
+        placeId
+      )!!;
       try {
         const creds = await this.uploadPlace(place);
         this.cache.setUserCredentials(placeId, creds);

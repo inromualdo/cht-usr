@@ -5,6 +5,24 @@ import { uploadState, workBookState } from "../services/models";
 export default async function place(fastify: FastifyInstance) {
   const { cache, cht, jobManager } = fastify;
 
+  // search for a place given its type and name
+  // return search results dropdown
+  fastify.post("/search/replace", async (req, resp) => {
+    const data: any = req.body;
+    const placeType = data.place_type!!;
+    const searchString = data.place_search;
+    const results = await cht.searchPlace(placeType, searchString);
+    cache.cacheRemoteSearchResult(results);
+    if (results.length === 0) {
+      results.push({ id: "na", name: "Place Not Found" });
+    }
+    return resp.view("src/public/components/replace_user_search_results.html", {
+      results: results,
+    });
+  });
+
+  // search for a place's possible parents given its type
+  // return search results dropdown
   fastify.post("/search/parent", async (req, resp) => {
     const data: any = req.body;
     const placeType = cache.getParentType(data.place_type)!!;
@@ -31,20 +49,60 @@ export default async function place(fastify: FastifyInstance) {
       results.push({ id: "na", name: "Place Not Found" });
     }
     return resp.view("src/public/components/search_results.html", {
+      pagePlaceType: data.place_type,
       results: results,
     });
   });
 
+  // re-render the whole form with a hidden input that has the place id/name
+  // when we select a place from search results
+  // for the new place's parent
   fastify.post("/place/parent", async (req, resp) => {
+    const data: any = req.body;
     const params: any = req.query;
     const placeId = params.id;
-    if (placeId === "na") {
+    const location = new URL(req.headers.referer!!);
+    if (placeId === "na" || !location.searchParams.has("op")) {
       resp.status(400);
       return;
     }
-    const place = cache.getCachedResult(placeId);
-    return resp.view("src/public/components/place_parent_hidden.html", {
-      place: place,
+    const place = cache.getCachedSearchResult(
+      placeId,
+      location.pathname.replace("/workbook/", "")
+    );
+    data.place_parent = place!!.id;
+    data.place_search = place!!.name;
+    return resp.view("src/public/workbook/content_form.html", {
+      op: location.searchParams.get("op"),
+      data: data,
+      pagePlaceType: data.place_type!!,
+      userRoles: cache.getUserRoles(),
+      hasParent: cache.getParentType(data.place_type!!),
+    });
+  });
+
+  // re-render the whole form with a hidden input that has the place id/name
+  // when we select a place from search results
+  // for user replacements
+  fastify.post("/place/replace", async (req, resp) => {
+    const data: any = req.body;
+    const params: any = req.query;
+    const placeId = params.id;
+    const location = new URL(req.headers.referer!!);
+    if (placeId === "na" || !location.searchParams.has("op")) {
+      resp.status(400);
+      return;
+    }
+    const place = cache.getCachedSearchResult(
+      placeId,
+      location.pathname.replace("/workbook/", "")
+    );
+    data.place = place!!.id;
+    data.place_search = place!!.name;
+    return resp.view("src/public/workbook/content_form.html", {
+      op: location.searchParams.get("op"),
+      data: data,
+      pagePlaceType: data.place_type!!,
     });
   });
 

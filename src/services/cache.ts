@@ -4,7 +4,7 @@ import {
   PlaceSearchResult,
   UserPayload,
 } from "../lib/cht";
-import { getRoles, Hierarchy } from "../lib/utils";
+import { Hierarchy } from "../lib/utils";
 import { v4 as uuidv4 } from "uuid";
 import {
   workBookState,
@@ -103,18 +103,20 @@ export class MemCache {
     workbookId: string,
     placeType: string,
     placeId: string
-  ): place => {
+  ): place | undefined => {
     const workbook = this.workbooks.get(workbookId);
     if (!workbook) {
       throw new Error("workbook does not exist");
     }
-    const place = workbook.places
-      .get(placeType)!!
-      .find((place) => place.id === placeId)!!;
-    if (this.jobState.has(place.id!!)) {
-      const state = this.jobState.get(place.id!!);
-      if (state) {
-        place.state = { status: state.toString() };
+    const place = (workbook.places.get(placeType) || []).find(
+      (place) => place.id === placeId
+    )!!;
+    if (place) {
+      if (this.jobState.has(place.id!!)) {
+        const state = this.jobState.get(place.id!!);
+        if (state) {
+          place.state = { status: state.toString() };
+        }
       }
     }
     return place;
@@ -195,7 +197,11 @@ export class MemCache {
     const workbook = this.getWorkbook(workbookId);
     return workbook.places
       .get(placeType)!!
-      .filter((place) => place.name.includes(searchStr))
+      .filter(
+        (place) =>
+          place.name.toUpperCase().includes(searchStr.toUpperCase()) &&
+          !this.getRemoteId(place.id!!)
+      )
       .map((place) => {
         return { id: place.id!!, name: place.name };
       });
@@ -208,8 +214,18 @@ export class MemCache {
     });
   };
 
-  getCachedResult = (id: string): PlaceSearchResult | undefined => {
-    return this.searchResultCache.get(id);
+  getCachedSearchResult = (
+    id: string,
+    workbook: string
+  ): PlaceSearchResult | undefined => {
+    let result = this.searchResultCache.get(id);
+    if (!result) {
+      const place = this.getPlaces(workbook).find(
+        (place) => !this.getRemoteId(place.id!!) && place.id === id
+      );
+      if (place) result = { id: place.id!!, name: place.name };
+    }
+    return result;
   };
 
   setRemoteId = (localId: string, id: string) => {
