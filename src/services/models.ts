@@ -7,10 +7,11 @@ export type person = {
 };
 
 export type place = {
-  id?: string;
+  id: string;
   name: string;
   type: string;
   contact: person;
+  action: "create" | "replace_contact"; // we def need another model now
   parent?: {
     id: string;
     name: string;

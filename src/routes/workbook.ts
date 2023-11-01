@@ -1,11 +1,8 @@
-import { once } from "events";
-import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { parse } from "csv";
-import { place, uploadState } from "../services/models";
-import { validatePlace } from "../services/utils";
+import { FastifyInstance } from "fastify";
+import { uploadState } from "../services/models";
 
 export default async function workbook(fastify: FastifyInstance) {
-  const { cache } = fastify;
+  const { cache, jobManager } = fastify;
 
   fastify.get("/", async (req, resp) => {
     const workbooks = cache.getWorkbooks();
@@ -70,150 +67,11 @@ export default async function workbook(fastify: FastifyInstance) {
     return resp.view("src/public/workbook/view.html", tmplData);
   });
 
-  fastify.post("/workbook/:id", async (req, resp) => {
-    const queryParams: any = req.query;
-    if (queryParams?.bulk === "1") {
-      return handleBulkCreatePlaces(req, resp);
-    } else {
-      return handleCreatePlace(req, resp);
-    }
+  // initiates place creation via the job manager
+  fastify.post("/workbook/:id/submit", async (req, resp) => {
+    const params: any = req.params;
+    const workbookId = params.id!!;
+    jobManager.doUpload(workbookId);
+    return `<button class="button is-dark" hx-post="/workbook/${workbookId}/submit" hx-target="this" hx-swap="outerHTML">Apply Changes</button>`;
   });
-
-  const handleBulkCreatePlaces = async (
-    req: FastifyRequest,
-    resp: FastifyReply
-  ): Promise<any> => {
-    const params: any = req.params;
-    const workbookId = params.id;
-
-    const fileData: any = await req.file();
-    const csvBuf = await fileData.toBuffer();
-    const parser = parse(csvBuf, { delimiter: ",", from_line: 1 });
-
-    let parent: any;
-    if (fileData.fields["place_parent"]) {
-      const result = cache.getCachedSearchResult(
-        fileData.fields["place_parent"].value,
-        workbookId
-      )!!;
-      parent = {
-        id: result.id,
-        name: result.name,
-      };
-    }
-    const placeType = fileData.fields["place_type"].value;
-    const userRole = fileData.fields["contact_role"].value;
-
-    let columns: string[];
-    parser.on("data", function (row: string[]) {
-      if (!columns) {
-        columns = row;
-      } else {
-        const p: place = {
-          name: row[columns.indexOf("place")],
-          type: placeType,
-          contact: {
-            name: row[columns.indexOf("contact")],
-            phone: row[columns.indexOf("phone")],
-            sex: row[columns.indexOf("sex")],
-            role: userRole,
-          },
-        };
-        if (parent) {
-          p.parent = parent;
-        }
-        cache.savePlace(workbookId, p);
-      }
-    });
-
-    await once(parser, "finish");
-
-    const form = await fastify.view("src/public/place/bulk_create_form.html", {
-      pagePlaceType: placeType,
-      userRoles: cache.getUserRoles(),
-      hasParent: !!cache.getParentType(placeType),
-    });
-    const list = await fastify.view("src/public/place/list.html", {
-      oob: true,
-      places: cache.getPlaces(workbookId),
-    });
-    const controls = await fastify.view("src/public/place/controls.html", {
-      oob: true,
-      workbookId: workbookId,
-      workbookState: cache.getWorkbookState(workbookId)?.state,
-      noStateJobCount: cache.getPlaceByUploadState(workbookId, undefined)
-        .length,
-    });
-    return form + list + controls;
-  };
-
-  const handleCreatePlace = async (
-    req: FastifyRequest,
-    resp: FastifyReply
-  ): Promise<any> => {
-    const params: any = req.params;
-    const workbookId = params.id;
-
-    const data: any = req.body;
-    if (
-      cache.getParentType(data.place_type) &&
-      (!data.place_parent ||
-        !cache.getCachedSearchResult(data.place_parent, workbookId))
-    ) {
-      resp.status(400);
-      return;
-    }
-
-    const results = validatePlace(data);
-    if (!results.dataValid) {
-      return resp.view("src/public/place/create_form.html", {
-        pagePlaceType: data.place_type,
-        userRoles: cache.getUserRoles(),
-        hasParent: cache.getParentType(data.place_type),
-        data: data,
-        errors: results.errors,
-      });
-    }
-
-    const p: place = {
-      name: data.place_name,
-      type: data.place_type,
-      contact: {
-        name: data.contact_name,
-        phone: data.contact_phone,
-        sex: data.contact_sex,
-        role: data.contact_role,
-      },
-    };
-    if (data.place_parent) {
-      const parent = cache.getCachedSearchResult(
-        data.place_parent,
-        workbookId
-      )!!;
-      p.parent = {
-        id: parent.id,
-        name: parent.name,
-      };
-    }
-
-    cache.savePlace(workbookId, p);
-
-    const form = await fastify.view("src/public/place/create_form.html", {
-      pagePlaceType: data.place_type,
-      userRoles: cache.getUserRoles(),
-      hasParent: !!cache.getParentType(data.place_type),
-    });
-    const list = await fastify.view("src/public/place/list.html", {
-      oob: true,
-      places: cache.getPlaces(workbookId),
-    });
-    const controls = await fastify.view("src/public/place/controls.html", {
-      oob: true,
-      workbookId: workbookId,
-      workbookState: cache.getWorkbookState(workbookId)?.state,
-      noStateJobCount: cache.getPlaceByUploadState(workbookId, undefined)
-        .length,
-    });
-    return form + list + controls;
-  };
 }

@@ -3,6 +3,8 @@
 
     {% if op == "bulk" %}
     {% include "place/bulk_create_form.html" %}
+    {% elsif op == "replace"%}
+    {% include "place/replace_user_form.html" %}
     {% else %}
     {% include "place/create_form.html" %}
     {% endif %}

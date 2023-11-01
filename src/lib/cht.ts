@@ -23,6 +23,7 @@ export type PersonPayload = {
   sex: string;
   type: string;
   contact_type: string;
+  place?: string;
 };
 
 export type PlacePayload = {
@@ -91,10 +92,32 @@ export class ChtApi {
     }
   };
 
+  updatePlaceContact = async (
+    place: string,
+    contact: string
+  ): Promise<void> => {
+    const doc: any = await this.getDoc(place);
+    doc.contact = {
+      _id: contact,
+    };
+    delete doc["_id"];
+    const url = `https://${this.creds.User}:${this.creds.Pass}@${this.creds.Domain}/medic/${place}`;
+    const resp = await axios.put(url, doc);
+    if (resp.status !== 201) {
+      throw new Error(resp.data);
+    }
+  };
+
   // we only get the place id back
   createPlace = async (place: PlacePayload): Promise<string> => {
     const url = `https://${this.creds.User}:${this.creds.Pass}@${this.creds.Domain}/api/v1/places`;
     const resp = await axios.post(url, place);
+    return resp.data.id;
+  };
+
+  createContact = async (person: PersonPayload): Promise<string> => {
+    const url = `https://${this.creds.User}:${this.creds.Pass}@${this.creds.Domain}/api/v1/people`;
+    const resp = await axios.post(url, person);
     return resp.data.id;
   };
 

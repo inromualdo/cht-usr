@@ -1,4 +1,5 @@
-<form id="form_place_create" autocomplete="off" hx-post="#" hx-target="this" hx-swap="outerHTML">
+<form id="form_place_create" autocomplete="off" hx-post="/place?workbook={{workbookId}}&op=new" hx-target="this"
+    hx-swap="outerHTML">
     <input name="place_type" value="{{pagePlaceType}}" hidden />
     <div class="field">
         <label class="label">Place*</label>
@@ -16,6 +17,9 @@
         </div>
         <div id="search_results" class="control">
         </div>
+        {% if errors.missingParent %}
+        <span class='error-message' style="color:maroon">Search and select a place from the drop down shown</span>
+        {% endif %}
         {% if data.place_parent %}
         <select name="place_parent" hidden>
             <option value="{{ data.place_parent }}" selected>{{ data.place_search }}</option>
@@ -49,7 +53,7 @@
             <input name="contact_phone" type="tel" placeholder="eg. 0712345678" class="input" required
                 pattern="^[+\d]+$" / {% if data.contact_phone %}value="{{data.contact_phone}}" {% endif %}>
             {% if errors.phoneInvalid %}
-            <span class='error-message' style="color:red">Invalid Phone Number format</span>
+            <span class='error-message' style="color:maroon">Invalid Phone Number format</span>
             {% endif %}
         </div>
     </div>

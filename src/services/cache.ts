@@ -5,7 +5,6 @@ import {
   UserPayload,
 } from "../lib/cht";
 import { Hierarchy } from "../lib/utils";
-import { v4 as uuidv4 } from "uuid";
 import {
   workBookState,
   uploadState,
@@ -79,13 +78,10 @@ export class MemCache {
     if (!workbook) {
       throw new Error("workbook does not exist");
     }
-    const id = uuidv4();
-    data.id = "place::" + id;
-    data.contact.id = "person::" + id;
     const places = workbook.places.get(data.type) || [];
     places.push(data);
     this.idMap.set(data.id, undefined);
-    this.idMap.set(data.contact.id, undefined);
+    this.idMap.set(data.contact.id!!, undefined);
     workbook.places.set(data.type, places);
     if (workbook.state) {
       workbook.state.state = "pending";
@@ -292,15 +288,17 @@ export class MemCache {
   };
 
   buildContactPayload = (
-    contactType: string,
-    person: person
+    person: person,
+    placeType: string,
+    parent?: string
   ): PersonPayload => {
     return {
       name: person.name,
       phone: person.phone,
       sex: person.sex,
       type: "contact",
-      contact_type: contactType,
+      contact_type: this.hierarchy!![placeType].personContactType!!,
+      place: parent,
     };
   };
 
@@ -310,8 +308,9 @@ export class MemCache {
       type: "contact",
       contact_type: place.type,
       contact: this.buildContactPayload(
-        this.hierarchy!![place.type].personContactType!!,
-        place.contact
+        place.contact,
+        place.type,
+        place.action === "replace_contact" ? place.id : undefined
       ),
     };
     if (place.parent) {

@@ -7,7 +7,7 @@
     {%endif%}
     {%else%}
     <button class="button is-dark {%if workbookState == 'in_progress' %}is-loading{%endif%}"
-        hx-post="/places?workbook={{workbookId}}" hx-target="this" hx-swap="outerHTML">Apply Changes {%if
+        hx-post="/workbook/{{workbookId}}/submit" hx-target="this" hx-swap="outerHTML">Apply Changes {%if
         noStateJobCount >
         0%}({{noStateJobCount}}){%endif%}</button>
     {%endif%}

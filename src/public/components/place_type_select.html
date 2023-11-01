@@ -2,8 +2,8 @@
     <div class="field is-grouped">
         <div class="control">
             <div class="select">
-                <select name="type" hx-post="/place/form/update" hx-trigger="change" hx-target="#place_form_parent"
-                    hx-swap="outerHTML">
+                <select name="type" hx-post="/place/form/update?workbook={{workbookId}}" hx-trigger="change"
+                    hx-target="#place_form_parent" hx-swap="outerHTML">
                     {%- for place in hierarchy %}
                     <option value="{{place}}" {% if pagePlaceType==place %}selected{%endif%}>{{place}}</option>
                     {%- endfor%}
@@ -12,10 +12,11 @@
         </div>
         <div class="control">
             <div class="select">
-                <select name="op" hx-post="/place/form/update" hx-trigger="change" hx-target="#place_form_parent"
-                    hx-swap="outerHTML">
+                <select name="op" hx-post="/place/form/update?workbook={{workbookId}}" hx-trigger="change"
+                    hx-target="#place_form_parent" hx-swap="outerHTML">
                     <option value="new" {% if op=="new" %}selected{%endif%}>New</option>
-                    <option value="bulk" {% if op=="bulk" %}selected{%endif%}>Bulk</option>
+                    <option value="bulk" {% if op=="bulk" %}selected{%endif%}>Bulk Load</option>
+                    <option value="replace" {% if op=="replace" %}selected{%endif%}>Replace Contact</option>
                 </select>
             </div>
         </div>

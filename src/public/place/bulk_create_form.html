@@ -1,5 +1,5 @@
-<form id="form_place_create" hx-encoding='multipart/form-data' autocomplete="off" hx-post="?bulk=1" hx-target="this"
-    hx-swap="outerHTML">
+<form id="form_place_create" hx-encoding='multipart/form-data' autocomplete="off"
+    hx-post="/place?workbook={{workbookId}}&op=bulk&type={{pagePlaceType}}" hx-target="this" hx-swap="outerHTML">
     <input name="place_type" value="{{pagePlaceType}}" hidden />
     {% if hasParent %}
     <div class="field">
@@ -9,6 +9,9 @@
         </div>
         <div id="search_results" class="control">
         </div>
+        {% if errors.missingParent %}
+        <span class='error-message' style="color:maroon">Search and select a place from the drop down shown</span>
+        {% endif %}
         {% if data.place_parent %}
         <select name="place_parent" hidden>
             <option value="{{ data.place_parent }}" selected>{{ data.place_search }}</option>
