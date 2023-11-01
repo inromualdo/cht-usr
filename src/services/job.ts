@@ -46,13 +46,14 @@ export class UploadManager extends EventEmitter {
       };
       workbook.places
         .get(placeType)
-        ?.filter(
-          (place) => !place.state || place.state!!.status == uploadState.FAILURE
-        )
-        .forEach((place) => {
-          batch.placeIds.push(place.id!!);
-          this.cache.setJobState(place.id!!, uploadState.PENDING);
-          this.emitJobStateChange(workbook.id, place.id!!, uploadState.PENDING);
+        ?.filter((placeId: string) => {
+          const state = this.cache.getJobState(placeId);
+          return !state || state!!.status == uploadState.FAILURE;
+        })
+        .forEach((placeId: string) => {
+          batch.placeIds.push(placeId);
+          this.cache.setJobState(placeId, uploadState.PENDING);
+          this.emitJobStateChange(workbook.id, placeId, uploadState.PENDING);
         });
       batches.push(batch);
     }
@@ -78,11 +79,7 @@ export class UploadManager extends EventEmitter {
 
   private uploadBatch = async (job: batch) => {
     for (const placeId of job.placeIds) {
-      const place = this.cache.getPlace(
-        job.workbookId,
-        job.placeType,
-        placeId
-      )!!;
+      const place = this.cache.getPlace(placeId)!!;
       try {
         let creds: userCredentials;
         if (place.action === "create") {
@@ -110,9 +107,10 @@ export class UploadManager extends EventEmitter {
   };
 
   private uploadPlace = async (placeData: place): Promise<userCredentials> => {
+    const contact = this.cache.getPerson(placeData.contact)!!;
     let placeId = this.cache.getRemoteId(placeData.id!!);
     if (!placeId) {
-      const placePayload = this.cache.buildPlacePayload(placeData);
+      const placePayload = this.cache.buildPlacePayload(placeData, contact);
       placeId = await this.chtApi.createPlace(placePayload);
       this.cache.setRemoteId(placeData.id!!, placeId);
     }
@@ -120,14 +118,14 @@ export class UploadManager extends EventEmitter {
     // why...we don't get a contact id when we create a place with a contact defined.
     // then the created contact doesn't get a parent assigned so we can't create a user for it
     const contactId: string = await this.chtApi.getPlaceContactId(placeId);
-    this.cache.setRemoteId(placeData.contact.id!!, contactId);
+    this.cache.setRemoteId(contact.id, contactId);
     await this.chtApi.updateContactParent(contactId, placeId);
 
     const userPayload: UserPayload = this.cache.buildUserPayload(
       placeId,
       contactId,
-      placeData.contact.name,
-      placeData.contact.role
+      contact.name,
+      contact.role
     );
     const { username, pass } = await this.tryCreateUser(userPayload);
     return {
@@ -141,23 +139,23 @@ export class UploadManager extends EventEmitter {
   private replaceContact = async (
     placeData: place
   ): Promise<userCredentials> => {
-    const contact = placeData.contact;
+    const contact = this.cache.getPerson(placeData.contact)!!;
     let contactId = this.cache.getRemoteId(contact.id!!);
     if (!contactId) {
       const contactPayload = this.cache.buildContactPayload(
-        placeData.contact,
-        placeData.type,
+        contact,
+        this.cache.getPersonContactType(placeData.type),
         placeData.id
       );
       contactId = await this.chtApi.createContact(contactPayload);
-      this.cache.setRemoteId(placeData.contact.id!!, contactId);
+      this.cache.setRemoteId(contact.id, contactId);
       await this.chtApi.updatePlaceContact(placeData.id, contactId);
     }
     const userPayload: UserPayload = this.cache.buildUserPayload(
       placeData.id,
       contactId,
-      placeData.contact.name,
-      placeData.contact.role
+      contact.name,
+      contact.role
     );
     const { username, pass } = await this.tryCreateUser(userPayload);
     return {

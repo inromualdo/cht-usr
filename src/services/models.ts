@@ -1,5 +1,6 @@
 export type person = {
-  id?: string;
+  id: string;
+  remoteId?: string;
   name: string;
   phone: string;
   sex: string;
@@ -8,22 +9,31 @@ export type person = {
 
 export type place = {
   id: string;
+  remoteId?: string;
   name: string;
   type: string;
-  contact: person;
+  contact: string;
   action: "create" | "replace_contact"; // we def need another model now
   parent?: {
     id: string;
     name: string;
   };
-  state?: {
-    status: string;
-  };
+};
+
+export type jobState = {
+  id: string;
+  status: uploadState;
+};
+
+export type displayPlace = {
+  place: place;
+  contact: person;
+  state: jobState;
 };
 
 export type workBookState = {
   id: string;
-  places: Map<string, place[]>;
+  places: Map<string, string[]>;
   state?: workbookuploadState;
 };
 

@@ -40,7 +40,7 @@ export default async function workbook(fastify: FastifyInstance) {
       title: id,
       workbookId: id,
       hierarchy: cache.getPlaceTypes(),
-      places: cache.getPlaces(id),
+      places: cache.getPlacesForDisplay(id),
       workbookState: cache.getWorkbookState(id)?.state,
       hasFailedJobs: hasFailedJobs,
       failedJobCount: failed.length,

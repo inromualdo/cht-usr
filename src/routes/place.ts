@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { isValidPhoneNumber } from "libphonenumber-js";
 import { jobState } from "../services/job";
-import { uploadState, workBookState, place } from "../services/models";
+import { uploadState, workBookState, place, person } from "../services/models";
 import { v4 as uuidv4 } from "uuid";
 import { parse } from "csv";
 import { once } from "events";
@@ -154,31 +154,33 @@ export default async function place(fastify: FastifyInstance) {
     }
     // build the place object, and save it.
     const id = uuidv4();
-    const p: place = {
+    const contactData: person = {
+      id: "person::" + id,
+      name: data.contact_name,
+      phone: data.contact_phone,
+      sex: data.contact_sex,
+      role: data.contact_role,
+    };
+    const placeData: place = {
       id: "place::" + id,
       name: data.place_name,
       type: data.place_type,
       action: "create",
-      contact: {
-        id: "person::" + id,
-        name: data.contact_name,
-        phone: data.contact_phone,
-        sex: data.contact_sex,
-        role: data.contact_role,
-      },
+      contact: contactData.id,
     };
+    // set parent if any
     if (data.place_parent) {
       const parent = cache.getCachedSearchResult(
         data.place_parent,
         workbookId
       )!!;
-      p.parent = {
+      placeData.parent = {
         id: parent.id,
         name: parent.name,
       };
     }
     // save the place
-    cache.savePlace(workbookId, p);
+    cache.savePlace(workbookId, placeData, contactData);
     // finally render an empty form, and the updated place list
     const form = await fastify.view("src/public/place/create_form.html", {
       workbookId: workbookId,
@@ -188,7 +190,7 @@ export default async function place(fastify: FastifyInstance) {
     });
     const list = await fastify.view("src/public/place/list.html", {
       oob: true,
-      places: cache.getPlaces(workbookId),
+      places: cache.getPlacesForDisplay(workbookId),
     });
     const controls = await fastify.view("src/public/place/controls.html", {
       oob: true,
@@ -230,7 +232,7 @@ export default async function place(fastify: FastifyInstance) {
       });
     }
 
-    let parent: any;
+    let parent: any = undefined;
     if (fileData.fields["place_parent"]) {
       const result = cache.getCachedSearchResult(
         (fileData.fields["place_parent"] as MultipartValue<string>).value,
@@ -248,23 +250,22 @@ export default async function place(fastify: FastifyInstance) {
         columns = row;
       } else {
         const id = uuidv4();
-        const p: place = {
+        const contact: person = {
+          id: "person::" + id,
+          name: row[columns.indexOf("contact")],
+          phone: row[columns.indexOf("phone")],
+          sex: row[columns.indexOf("sex")],
+          role: userRole,
+        };
+        const placeData: place = {
           id: "place::" + id,
           name: row[columns.indexOf("place")],
           type: placeType,
           action: "create",
-          contact: {
-            id: "person::" + id,
-            name: row[columns.indexOf("contact")],
-            phone: row[columns.indexOf("phone")],
-            sex: row[columns.indexOf("sex")],
-            role: userRole,
-          },
+          contact: contact.id,
+          parent: parent,
         };
-        if (parent) {
-          p.parent = parent;
-        }
-        cache.savePlace(workbookId, p);
+        cache.savePlace(workbookId, placeData, contact);
       }
     });
     // wait
@@ -278,7 +279,7 @@ export default async function place(fastify: FastifyInstance) {
     });
     const list = await fastify.view("src/public/place/list.html", {
       oob: true,
-      places: cache.getPlaces(workbookId),
+      places: cache.getPlacesForDisplay(workbookId),
     });
     const controls = await fastify.view("src/public/place/controls.html", {
       oob: true,
@@ -319,23 +320,24 @@ export default async function place(fastify: FastifyInstance) {
         },
       });
     }
-    // create a place for saving
+    // build the models
     const id = uuidv4();
-    const p: place = {
+    const contact: person = {
+      id: "person::" + id,
+      name: data.contact_name,
+      phone: data.contact_phone,
+      sex: data.contact_sex,
+      role: data.contact_role,
+    };
+    const placeData: place = {
       id: data.place_id,
       name: data.place_search,
       type: data.place_type,
       action: "replace_contact",
-      contact: {
-        id: "person::" + id,
-        name: data.contact_name,
-        phone: data.contact_phone,
-        sex: data.contact_sex,
-        role: data.contact_role,
-      },
+      contact: contact.id,
     };
-    // save the place
-    cache.savePlace(workbookId, p);
+    // save the place and contact
+    cache.savePlace(workbookId, placeData, contact);
     // finally render an empty form, and the updated place list
     const form = await fastify.view("src/public/place/replace_user_form.html", {
       workbookId: workbookId,
@@ -344,7 +346,7 @@ export default async function place(fastify: FastifyInstance) {
     });
     const list = await fastify.view("src/public/place/list.html", {
       oob: true,
-      places: cache.getPlaces(workbookId),
+      places: cache.getPlacesForDisplay(workbookId),
     });
     const controls = await fastify.view("src/public/place/controls.html", {
       oob: true,
@@ -375,7 +377,7 @@ export default async function place(fastify: FastifyInstance) {
     const queryParams: any = req.query;
     const workbookId = queryParams.workbook!!;
     return resp.view("src/public/place/list.html", {
-      places: cache.getPlaces(workbookId),
+      places: cache.getPlacesForDisplay(workbookId),
     });
   });
 

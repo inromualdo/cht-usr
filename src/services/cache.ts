@@ -13,15 +13,20 @@ import {
   workbookuploadState,
   userCredentials,
   placeWithCreds,
+  jobState,
+  displayPlace,
 } from "./models";
 
 export class MemCache {
   private hierarchy: Hierarchy;
   private userRoles: string[];
+
   private workbooks: Map<string, workBookState>;
+  private places: Map<string, place> = new Map();
+  private people: Map<string, person> = new Map();
+
   private searchResultCache: Map<string, PlaceSearchResult> = new Map();
-  private idMap: Map<string, string | undefined> = new Map(); //<local> - <remote> place id map
-  private jobState: Map<string, uploadState> = new Map();
+  private jobState: Map<string, jobState> = new Map();
   private credList: Map<string, userCredentials> = new Map();
 
   constructor(hierachy: Hierarchy, userRoles: string[]) {
@@ -73,53 +78,43 @@ export class MemCache {
    * @param workbookId
    * @param data place data
    */
-  savePlace = (workbookId: string, data: place) => {
+  savePlace = (workbookId: string, placeData: place, personData: person) => {
     const workbook = this.workbooks.get(workbookId);
     if (!workbook) {
       throw new Error("workbook does not exist");
     }
-    const places = workbook.places.get(data.type) || [];
-    places.push(data);
-    this.idMap.set(data.id, undefined);
-    this.idMap.set(data.contact.id!!, undefined);
-    workbook.places.set(data.type, places);
+    // add teh data to a map
+    this.places.set(placeData.id, placeData);
+    this.people.set(personData.id, personData);
+    // add place reference to teh workbook state
+    const places = workbook.places.get(placeData.type) || [];
+    places.push(placeData.id);
+    workbook.places.set(placeData.type, places);
+    // if we had previous state, update it
     if (workbook.state) {
       workbook.state.state = "pending";
     }
   };
 
   /**
-   *
-   * @param workbookId workbbook the place belongs to
-   * @param placeType
-   * @param placeId
+   * @param id
    * @returns place
    */
-  getPlace = (
-    workbookId: string,
-    placeType: string,
-    placeId: string
-  ): place | undefined => {
-    const workbook = this.workbooks.get(workbookId);
-    if (!workbook) {
-      throw new Error("workbook does not exist");
-    }
-    const place = (workbook.places.get(placeType) || []).find(
-      (place) => place.id === placeId
-    )!!;
-    if (place) {
-      if (this.jobState.has(place.id!!)) {
-        const state = this.jobState.get(place.id!!);
-        if (state) {
-          place.state = { status: state.toString() };
-        }
-      }
-    }
-    return place;
-  };
+  getPlace = (id: string) => this.places.get(id);
 
   /**
-   *
+   * @param id
+   * @returns place
+   */
+  getPerson = (id: string) => this.people.get(id);
+
+  /**
+   * @param id
+   * @returns job status
+   */
+  getJobState = (id: string) => this.jobState.get(id);
+
+  /**
    * @param workbookId
    * @returns list of places in the workbook
    */
@@ -131,14 +126,34 @@ export class MemCache {
     const places: place[] = [];
     for (const placeType of this.getPlaceTypes()) {
       const data = workbook.places.get(placeType) || [];
-      data.forEach((place) => {
-        if (this.jobState.has(place.id!!)) {
-          const state = this.jobState.get(place.id!!);
-          if (state) {
-            place.state = { status: state.toString() };
-          }
-        }
-        places.push(place);
+      data.forEach((placeId: string) => {
+        places.push(this.getPlace(placeId)!!);
+      });
+    }
+    return places;
+  };
+
+  /**
+   * @param workbookId
+   * @returns list of places in the workbook
+   */
+  getPlacesForDisplay = (workbookId: string): displayPlace[] => {
+    const workbook = this.workbooks.get(workbookId);
+    if (!workbook) {
+      throw new Error("workbook does not exist");
+    }
+    const places: displayPlace[] = [];
+    for (const placeType of this.getPlaceTypes()) {
+      const data = workbook.places.get(placeType) || [];
+      data.forEach((placeId: string) => {
+        const place = this.getPlace(placeId)!!;
+        const person = this.getPerson(place.contact)!!;
+        const state = this.getJobState(place.id)!!;
+        places.push({
+          place: place,
+          contact: person,
+          state: state,
+        });
       });
     }
     return places;
@@ -193,13 +208,16 @@ export class MemCache {
     const workbook = this.getWorkbook(workbookId);
     return workbook.places
       .get(placeType)!!
-      .filter(
-        (place) =>
+      .filter((placeId: string) => {
+        const place = this.getPlace(placeId)!!;
+        return (
           place.name.toUpperCase().includes(searchStr.toUpperCase()) &&
-          !this.getRemoteId(place.id!!)
-      )
-      .map((place) => {
-        return { id: place.id!!, name: place.name };
+          !place.remoteId
+        );
+      })
+      .map((placeId: string) => {
+        const place = this.getPlace(placeId)!!;
+        return { id: place.id, name: place.name };
       });
   };
 
@@ -225,15 +243,20 @@ export class MemCache {
   };
 
   setRemoteId = (localId: string, id: string) => {
-    this.idMap.set(localId, id);
+    if (this.places.has(localId)) this.places.get(localId)!!.remoteId = id;
+    if (this.people.has(localId)) this.people.get(localId)!!.remoteId = id;
   };
 
   getRemoteId = (id: string): string | undefined => {
-    return this.idMap.get(id);
+    return this.places.get(id)?.remoteId ?? this.people.get(id)?.remoteId;
   };
 
   setJobState = (jobId: string, status: uploadState) => {
-    this.jobState.set(jobId, status);
+    if (!this.jobState.has(jobId)) {
+      this.jobState.set(jobId, { id: jobId, status: status });
+    } else {
+      this.jobState.get(jobId)!!.status = status;
+    }
   };
 
   setUserCredentials = (placeId: string, creds: userCredentials) => {
@@ -242,13 +265,16 @@ export class MemCache {
 
   getUserCredentials = (workbookId: string): placeWithCreds[] => {
     return this.getPlaces(workbookId)
-      .filter((place) => place.state?.status === uploadState.SUCCESS)
+      .filter(
+        (place) => this.getJobState(place.id)?.status === uploadState.SUCCESS
+      )
       .map((place) => {
+        const contact = this.people.get(place.contact)!!;
         return {
           placeName: place.name,
           placeType: place.type,
           placeParent: place.parent?.name,
-          contactName: place.contact.name,
+          contactName: contact.name,
           creds: this.credList.get(place.id!!)!!,
         } as placeWithCreds;
       });
@@ -266,10 +292,18 @@ export class MemCache {
     workbookId: string,
     state?: uploadState
   ): place[] => {
-    return this.getPlaces(workbookId).filter((place) =>
-      state ? place.state?.status === state : !place.state
-    );
+    return this.getPlaces(workbookId).filter((place) => {
+      return this.getJobState(place.id)?.status === state;
+    });
   };
+
+  /**
+   *
+   * @param placeType
+   * @returns person contact type that is expected in places of type placeType
+   */
+  getPersonContactType = (placeType: string): string =>
+    this.hierarchy[placeType].personContactType!!;
 
   buildUserPayload = (
     placeId: string,
@@ -289,7 +323,7 @@ export class MemCache {
 
   buildContactPayload = (
     person: person,
-    placeType: string,
+    contactType: string,
     parent?: string
   ): PersonPayload => {
     return {
@@ -297,24 +331,28 @@ export class MemCache {
       phone: person.phone,
       sex: person.sex,
       type: "contact",
-      contact_type: this.hierarchy!![placeType].personContactType!!,
+      contact_type: contactType,
       place: parent,
     };
   };
 
-  buildPlacePayload = (place: place): PlacePayload => {
+  buildPlacePayload = (place: place, person: person): PlacePayload => {
     const data: PlacePayload = {
       name: place.name,
       type: "contact",
       contact_type: place.type,
       contact: this.buildContactPayload(
-        place.contact,
-        place.type,
+        person,
+        this.getPersonContactType(place.type),
         place.action === "replace_contact" ? place.id : undefined
       ),
     };
     if (place.parent) {
-      data.parent = this.getRemoteId(place.parent.id);
+      if (place.parent.id.startsWith("place::")) {
+        data.parent = this.getRemoteId(place.parent.id);
+      } else {
+        data.parent = place.parent.id;
+      }
     }
     return data;
   };
