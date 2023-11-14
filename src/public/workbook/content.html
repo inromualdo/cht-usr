@@ -1,18 +1,8 @@
-<div id="workflow-content" class="tile is-parent p-0">
-    <div class="tile is-4 is-child column">
-        <div class="tile is-child">
-            {% include "components/place_type_select.html" %}
-            {% include "workbook/content_form.html" %}
+<div class="tile is-ancestor">
+    <div class="tile is-3 is-parent" style="height: 100vh;">
+        <div class="tile is-child" style="background-color:#f8f9fa;">
+            {% include "workbook/fragment_config.html" %}
         </div>
     </div>
-    <div class="tile is-child column" hx-ext="sse" sse-connect="/place/job/status?workbook={{workbookId}}">
-        <div hx-trigger="sse:workbook_state_change" hx-get="/places/controls?workbook={{workbookId}}" hx-target="this"
-            hx-swap="innerHTML">
-            {% include "place/controls.html" %}
-        </div>
-        <div id="places_parent" class="tile is-child" hx-get="/places?workbook={{workbookId}}" hx-target="table"
-            hx-trigger="sse:state_change">
-            {% include "place/list.html" %}
-        </div>
-    </div>
+    {% include "workbook/content_places.html" %}
 </div>

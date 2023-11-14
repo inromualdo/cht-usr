@@ -10,12 +10,29 @@
 </head>
 
 <body>
-    {% include "workbook/view_header.html" %}
-    <section class="section pt-3">
-        <div id="container">
-            {% include "workbook/content.html" %}
+    <div id="workbook" class="tile is-ancestor" style="min-height: 100vh">
+        <div class="tile is-2 is-parent">
+            <div class="tile is-child" style="background-color:#f8f9fa;">
+                {% include "workbook/fragment_config.html" %}
+            </div>
         </div>
-    </section>
+        <div id="workflow-content" class="tile is-parent">
+            {%if view=="add"%}
+            {% include "workbook/fragment_form.html" %}
+            {%elsif view=="edit"%}
+            {% include "workbook/fragment_edit_form.html" %}
+            {%else%}
+            {% include "workbook/fragment_places.html" %}
+            {%endif%}
+        </div>
+    </div>
+    <script>
+        document.body.addEventListener('htmx:afterSwap', function (evt) {
+            if (evt.detail.successful && evt.detail.target.id == "form-locale-select") {
+                location.reload()
+            }
+        });
+    </script>
 </body>
 
 </html>

@@ -1,11 +1,12 @@
-import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { isValidPhoneNumber } from "libphonenumber-js";
+import { FastifyInstance, FastifyReply } from "fastify";
+import { isValidNumberForRegion } from "libphonenumber-js";
 import { jobState } from "../services/job";
 import { uploadState, workBookState, place, person } from "../services/models";
 import { v4 as uuidv4 } from "uuid";
 import { parse } from "csv";
 import { once } from "events";
 import { MultipartFile, MultipartValue } from "@fastify/multipart";
+import { illegalNameCharRegex, LOCALES } from "../services/cache";
 
 export default async function place(fastify: FastifyInstance) {
   const { cache, cht, jobManager } = fastify;
@@ -76,7 +77,7 @@ export default async function place(fastify: FastifyInstance) {
     const place = cache.getCachedSearchResult(placeId, workbookId);
     data.place_parent = place!!.id;
     data.place_search = place!!.name;
-    return resp.view("src/public/workbook/content_form.html", {
+    return resp.view("src/public/components/place_create_form.html", {
       workbookId: workbookId,
       op: location.searchParams.get("op"),
       data: data,
@@ -104,7 +105,7 @@ export default async function place(fastify: FastifyInstance) {
     const place = cache.getCachedSearchResult(placeId, workbookId);
     data.place_id = place!!.id;
     data.place_search = place!!.name;
-    return resp.view("src/public/workbook/content_form.html", {
+    return resp.view("src/public/components/place_create_form.html", {
       workbookId: workbookId,
       op: location.searchParams.get("op"),
       data: data,
@@ -136,9 +137,13 @@ export default async function place(fastify: FastifyInstance) {
     resp: FastifyReply
   ): Promise<any> => {
     // validate fields here
+    const workbook = cache.getWorkbook(workbookId);
     const isMissingParent =
       cache.getParentType(data.place_type) && !data.place_parent;
-    const isPhoneValid = isValidPhoneNumber(data.contact_phone, "KE");
+    const isPhoneValid = isValidNumberForRegion(
+      data.contact_phone,
+      workbook.locale
+    );
     if (!isPhoneValid || isMissingParent) {
       return resp.view("src/public/place/create_form.html", {
         workbookId: workbookId,
@@ -167,6 +172,7 @@ export default async function place(fastify: FastifyInstance) {
       type: data.place_type,
       action: "create",
       contact: contactData.id,
+      workbookId: workbookId,
     };
     // set parent if any
     if (data.place_parent) {
@@ -181,25 +187,18 @@ export default async function place(fastify: FastifyInstance) {
     }
     // save the place
     cache.savePlace(workbookId, placeData, contactData);
-    // finally render an empty form, and the updated place list
-    const form = await fastify.view("src/public/place/create_form.html", {
-      workbookId: workbookId,
-      pagePlaceType: data.place_type,
-      userRoles: cache.getUserRoles(),
-      hasParent: !!cache.getParentType(data.place_type),
-    });
-    const list = await fastify.view("src/public/place/list.html", {
+    // back to places list
+    resp.header("HX-Replace-Url", `/workbook/${workbookId}`);
+    return fastify.view("src/public/workbook/content_places.html", {
       oob: true,
       places: cache.getPlacesForDisplay(workbookId),
-    });
-    const controls = await fastify.view("src/public/place/controls.html", {
-      oob: true,
       workbookId: workbookId,
       workbookState: cache.getWorkbookState(workbookId)?.state,
-      noStateJobCount: cache.getPlaceByUploadState(workbookId, undefined)
-        .length,
+      scheduledJobCount: cache.getPlaceByUploadState(
+        workbookId,
+        uploadState.SCHEDULED
+      ).length,
     });
-    return form + list + controls;
   };
 
   // handle bulk place load
@@ -264,31 +263,25 @@ export default async function place(fastify: FastifyInstance) {
           action: "create",
           contact: contact.id,
           parent: parent,
+          workbookId: workbookId,
         };
         cache.savePlace(workbookId, placeData, contact);
       }
     });
     // wait
     await once(parser, "finish");
-    // render an empty form and update the place list
-    const form = await fastify.view("src/public/place/bulk_create_form.html", {
-      workbookId: workbookId,
-      pagePlaceType: placeType,
-      userRoles: cache.getUserRoles(),
-      hasParent: !!cache.getParentType(placeType),
-    });
-    const list = await fastify.view("src/public/place/list.html", {
+    // back to places list
+    resp.header("HX-Replace-Url", `/workbook/${workbookId}`);
+    return fastify.view("src/public/workbook/content_places.html", {
       oob: true,
       places: cache.getPlacesForDisplay(workbookId),
-    });
-    const controls = await fastify.view("src/public/place/controls.html", {
-      oob: true,
       workbookId: workbookId,
       workbookState: cache.getWorkbookState(workbookId)?.state,
-      noStateJobCount: cache.getPlaceByUploadState(workbookId, undefined)
-        .length,
+      scheduledJobCount: cache.getPlaceByUploadState(
+        workbookId,
+        uploadState.SCHEDULED
+      ).length,
     });
-    return form + list + controls;
   };
 
   const replaceContact = async (
@@ -305,8 +298,12 @@ export default async function place(fastify: FastifyInstance) {
         data: data,
       });
     }
+    const workbook = cache.getWorkbook(workbookId);
     // validate the inputs here
-    const isPhoneValid = isValidPhoneNumber(data.contact_phone, "KE");
+    const isPhoneValid = isValidNumberForRegion(
+      data.contact_phone,
+      workbook.locale
+    );
     if (!isPhoneValid || !data.place_id) {
       if (!data.place_id) data.place_search = "";
       return resp.view("src/public/place/replace_user_form.html", {
@@ -335,28 +332,38 @@ export default async function place(fastify: FastifyInstance) {
       type: data.place_type,
       action: "replace_contact",
       contact: contact.id,
+      workbookId: workbookId,
     };
     // save the place and contact
     cache.savePlace(workbookId, placeData, contact);
-    // finally render an empty form, and the updated place list
-    const form = await fastify.view("src/public/place/replace_user_form.html", {
-      workbookId: workbookId,
-      pagePlaceType: data.place_type,
-      userRoles: cache.getUserRoles(),
-    });
-    const list = await fastify.view("src/public/place/list.html", {
+    // back to places list
+    resp.header("HX-Replace-Url", `/workbook/${workbookId}`);
+    return fastify.view("src/public/workbook/content_places.html", {
       oob: true,
       places: cache.getPlacesForDisplay(workbookId),
-    });
-    const controls = await fastify.view("src/public/place/controls.html", {
-      oob: true,
       workbookId: workbookId,
       workbookState: cache.getWorkbookState(workbookId)?.state,
-      noStateJobCount: cache.getPlaceByUploadState(workbookId, undefined)
-        .length,
+      scheduledJobCount: cache.getPlaceByUploadState(
+        workbookId,
+        uploadState.SCHEDULED
+      ).length,
     });
-    return form + list + controls;
   };
+
+  fastify.get("/place/form", async (req, resp) => {
+    const queryParams: any = req.query;
+    const placeType = cache.getPlaceTypes()[0];
+    const op = queryParams.op || "new";
+    resp.header("HX-Push-Url", `/workbook/${queryParams.workbook}/add`);
+    return resp.view("src/public/workbook/fragment_form.html", {
+      op: op,
+      workbookId: queryParams.workbook,
+      hierarchy: cache.getPlaceTypes(),
+      pagePlaceType: placeType,
+      userRoles: cache.getUserRoles(),
+      hasParent: cache.getParentType(placeType),
+    });
+  });
 
   fastify.post("/place/form/update", async (req, resp) => {
     const queryParams: any = req.query;
@@ -364,12 +371,126 @@ export default async function place(fastify: FastifyInstance) {
     const placeType = data.type;
     const op = data.op || "new";
     resp.header("HX-Replace-Url", `?type=${placeType}&op=${op}`);
-    return resp.view("src/public/workbook/content_form.html", {
+    return resp.view("src/public/components/place_create_form.html", {
       workbookId: queryParams.workbook,
       op: op,
       pagePlaceType: placeType,
       userRoles: cache.getUserRoles(),
       hasParent: cache.getParentType(placeType),
+    });
+  });
+
+  fastify.get("/place/edit/:id", async (req, resp) => {
+    const params: any = req.params;
+    const id = params.id;
+
+    const place = cache.getPlace(id);
+    if (!place || place.remoteId) {
+      resp.code(400);
+      return;
+    }
+    const person = cache.getPerson(place.contact)!!;
+    const workbook = cache.getWorkbook(place.workbookId);
+    const tmplData = {
+      view: "edit",
+      workbookId: place.workbookId,
+      connected: true,
+      locales: LOCALES,
+      workbook_locale: workbook.locale,
+      op: "edit",
+      pagePlaceType: place.type,
+      hasParent: cache.getParentType(place.type),
+      backend: `/place/edit/${id}`,
+      userRoles: cache.getUserRoles(),
+      data: {
+        place_name: place.name,
+        contact_name: person.name,
+        contact_sex: person.sex,
+        contact_phone: person.phone,
+        contact_role: person.role,
+        place_search: place.parent?.name,
+        place_parent: place.parent?.id,
+      },
+      errors: {
+        phoneInvalid: !isValidNumberForRegion(person.phone, workbook.locale),
+        placeNameInvalid: place.name.match(illegalNameCharRegex),
+        contactNameInvalid: person.name.match(illegalNameCharRegex),
+        contactSexInvalid: !["male", "female"].some(
+          (item) => item === person.sex.toLowerCase()
+        ),
+      },
+    };
+    resp.header("HX-Push-Url", `/place/edit/${id}`);
+    const isHxReq = req.headers["hx-request"];
+    if (isHxReq) {
+      return resp.view("src/public/workbook/fragment_edit_form.html", tmplData);
+    }
+    return resp.view("src/public/workbook/view.html", tmplData);
+  });
+
+  fastify.post("/place/edit/:id", async (req, resp) => {
+    const params: any = req.params;
+    const id = params.id;
+
+    const place = cache.getPlace(id);
+    if (!place || place.remoteId) {
+      resp.code(400);
+      return;
+    }
+    const person = cache.getPerson(place.contact)!!;
+    const data: any = req.body;
+
+    const workbook = cache.getWorkbook(place.workbookId);
+    const isMissingParent =
+      cache.getParentType(data.place_type) && !data.place_parent;
+    const isPhoneValid = isValidNumberForRegion(
+      data.contact_phone,
+      workbook.locale
+    );
+    if (!isPhoneValid || isMissingParent) {
+      return resp.view("src/public/place/create_form.html", {
+        workbookId: place.workbookId,
+        backend: `/place/edit/${id}`,
+        pagePlaceType: data.place_type,
+        userRoles: cache.getUserRoles(),
+        hasParent: cache.getParentType(data.place_type),
+        data: data,
+        errors: {
+          phoneInvalid: !isPhoneValid,
+          missingParent: isMissingParent,
+        },
+      });
+    }
+
+    place.name = data.place_name;
+    person.name = data.contact_name;
+    person.phone = data.contact_phone;
+    person.role = data.contact_role;
+    person.sex = data.contact_sex;
+    // set or update parent if any
+    if (data.place_parent) {
+      const parent = cache.getCachedSearchResult(
+        data.place_parent,
+        place.workbookId
+      )!!;
+      place.parent = {
+        id: parent.id,
+        name: parent.name,
+      };
+    }
+    // update place and person
+    cache.updatePlace(place.workbookId, place, person);
+    // back to places list
+    resp.header("HX-Replace-Url", `/workbook/${place.workbookId}`);
+    return fastify.view("src/public/workbook/content_places.html", {
+      oob: true,
+      places: cache.getPlacesForDisplay(place.workbookId),
+      workbookId: place.workbookId,
+      workbookState: cache.getWorkbookState(place.workbookId)?.state,
+      scheduledJobCount: cache.getPlaceByUploadState(
+        place.workbookId,
+        uploadState.SCHEDULED
+      ).length,
     });
   });
 
@@ -385,14 +506,17 @@ export default async function place(fastify: FastifyInstance) {
     const queryParams: any = req.query;
     const workbookId = queryParams.workbook!!;
     const failed = cache.getPlaceByUploadState(workbookId, uploadState.FAILURE);
-    const noStateJobs = cache.getPlaceByUploadState(workbookId, undefined);
+    const scheduledJobs = cache.getPlaceByUploadState(
+      workbookId,
+      uploadState.SCHEDULED
+    );
     const hasFailedJobs = failed.length > 0;
     return resp.view("src/public/place/controls.html", {
       workbookId: workbookId,
       workbookState: cache.getWorkbookState(workbookId)?.state,
       hasFailedJobs: hasFailedJobs,
       failedJobCount: failed.length,
-      noStateJobCount: noStateJobs.length,
+      scheduledJobCount: scheduledJobs.length,
     });
   });
 

@@ -1,3 +1,4 @@
+import { CountryCode, isValidNumberForRegion } from "libphonenumber-js";
 import {
   PersonPayload,
   PlacePayload,
@@ -16,6 +17,9 @@ import {
   jobState,
   displayPlace,
 } from "./models";
+
+export const illegalNameCharRegex = new RegExp(`[^a-zA-Z'\\s]`);
+export const LOCALES: CountryCode[] = ["KE", "UG"]; //for now
 
 export class MemCache {
   private hierarchy: Hierarchy;
@@ -46,7 +50,11 @@ export class MemCache {
       (key) => !this.hierarchy!![key].parentPlaceContactType
     );
     const active = places[0];
-    const workflowState: workBookState = { id: id, places: new Map() };
+    const workflowState: workBookState = {
+      id: id,
+      places: new Map(),
+      locale: LOCALES[0],
+    };
     workflowState.places.set(active, []);
     this.workbooks.set(id, workflowState);
     return id;
@@ -63,6 +71,10 @@ export class MemCache {
       throw new Error("workbook does not exist");
     }
     return workbook;
+  };
+
+  setLocale = (workbookId: string, locale: CountryCode) => {
+    this.getWorkbook(workbookId)!!.locale = locale;
   };
 
   /**
@@ -93,6 +105,30 @@ export class MemCache {
     // if we had previous state, update it
     if (workbook.state) {
       workbook.state.state = "pending";
+    }
+    if (this.isPlaceValid(placeData, personData, workbook.locale)) {
+      this.setJobState(placeData.id, uploadState.SCHEDULED);
+    } else {
+      this.setJobState(placeData.id, uploadState.PENDING);
+    }
+  };
+
+  updatePlace = (workbookId: string, placeData: place, personData: person) => {
+    const workbook = this.workbooks.get(workbookId);
+    if (!workbook) {
+      throw new Error("workbook does not exist");
+    }
+    // add teh data to a map
+    this.places.set(placeData.id, placeData);
+    this.people.set(personData.id, personData);
+    // if we had previous state, update it
+    if (workbook.state) {
+      workbook.state.state = "pending";
+    }
+    if (this.isPlaceValid(placeData, personData, workbook.locale)) {
+      this.setJobState(placeData.id, uploadState.SCHEDULED);
+    } else {
+      this.setJobState(placeData.id, uploadState.PENDING);
     }
   };
 
@@ -133,6 +169,19 @@ export class MemCache {
     return places;
   };
 
+  isPlaceValid = (
+    place: place,
+    person: person,
+    locale: CountryCode
+  ): boolean => {
+    return (
+      !place.name.match(illegalNameCharRegex) &&
+      !person.name.match(illegalNameCharRegex) &&
+      isValidNumberForRegion(person.phone, locale) &&
+      ["male", "female"].some((item) => item === person.sex.toLowerCase())
+    );
+  };
+
   /**
    * @param workbookId
    * @returns list of places in the workbook
@@ -148,11 +197,13 @@ export class MemCache {
       data.forEach((placeId: string) => {
         const place = this.getPlace(placeId)!!;
         const person = this.getPerson(place.contact)!!;
+        const isValid = this.isPlaceValid(place, person, workbook.locale);
         const state = this.getJobState(place.id)!!;
         places.push({
           place: place,
           contact: person,
           state: state,
+          valid: isValid,
         });
       });
     }
@@ -288,10 +339,7 @@ export class MemCache {
     return this.workbooks.get(id)!!.state;
   };
 
-  getPlaceByUploadState = (
-    workbookId: string,
-    state?: uploadState
-  ): place[] => {
+  getPlaceByUploadState = (workbookId: string, state: uploadState): place[] => {
     return this.getPlaces(workbookId).filter((place) => {
       return this.getJobState(place.id)?.status === state;
     });

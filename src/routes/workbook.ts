@@ -1,26 +1,15 @@
 import { FastifyInstance } from "fastify";
 import { uploadState } from "../services/models";
+import { v4 as uuidv4 } from "uuid";
+import { LOCALES } from "../services/cache";
 
 export default async function workbook(fastify: FastifyInstance) {
   const { cache, jobManager } = fastify;
 
   fastify.get("/", async (req, resp) => {
-    const workbooks = cache.getWorkbooks();
-    return resp.view("src/public/index.html", {
-      workbooks: workbooks,
-    });
-  });
-
-  fastify.get("/workbook/new", async (req, resp) => {
-    return resp.view("src/public/workbook/create_form.html", {});
-  });
-
-  fastify.post("/workbook", async (req, resp) => {
-    const data: any = req.body;
-    cache.saveWorkbook(data.workbook_name);
-    return resp.view("src/public/index.html", {
-      workbooks: cache.getWorkbooks(),
-    });
+    const workbookId = uuidv4();
+    cache.saveWorkbook(workbookId);
+    resp.redirect(`/workbook/${workbookId}`);
   });
 
   fastify.get("/workbook/:id", async (req, resp) => {
@@ -33,19 +22,25 @@ export default async function workbook(fastify: FastifyInstance) {
     const op = queryParams.op || "new";
 
     const failed = cache.getPlaceByUploadState(id, uploadState.FAILURE);
-    const noStateJobs = cache.getPlaceByUploadState(id, undefined);
+    const scheduledJobs = cache.getPlaceByUploadState(
+      id,
+      uploadState.SCHEDULED
+    );
     const hasFailedJobs = failed.length > 0;
 
     const tmplData = {
       title: id,
+      connected: true,
       workbookId: id,
       hierarchy: cache.getPlaceTypes(),
       places: cache.getPlacesForDisplay(id),
       workbookState: cache.getWorkbookState(id)?.state,
       hasFailedJobs: hasFailedJobs,
       failedJobCount: failed.length,
-      noStateJobCount: noStateJobs.length,
+      scheduledJobCount: scheduledJobs.length,
       userRoles: cache.getUserRoles(),
+      locales: LOCALES,
+      workbook_locale: cache.getWorkbook(id).locale,
       pagePlaceType: placeType,
       op: op,
       hasParent: cache.getParentType(placeType),
@@ -67,8 +62,49 @@ export default async function workbook(fastify: FastifyInstance) {
     return resp.view("src/public/workbook/view.html", tmplData);
   });
 
+  fastify.get("/workbook/:id/add", async (req, resp) => {
+    const params: any = req.params;
+    const id = params.id;
+    const placeTypes = cache.getPlaceTypes();
+
+    const queryParams: any = req.query;
+    const placeType = queryParams.type || placeTypes[0];
+    const op = queryParams.op || "new";
+
+    const tmplData = {
+      view: "add",
+      title: id,
+      connected: true,
+      workbookId: id,
+      locales: LOCALES,
+      workbook_locale: cache.getWorkbook(id).locale,
+      hierarchy: placeTypes,
+      userRoles: cache.getUserRoles(),
+      pagePlaceType: placeType,
+      op: op,
+      hasParent: cache.getParentType(placeType),
+    };
+
+    return resp.view("src/public/workbook/view.html", tmplData);
+  });
+
+  // set locale for workbook
+  fastify.post("/workbook/locale", async (req, resp) => {
+    const queryParams: any = req.query;
+    const workbookId = queryParams.workbook!!;
+
+    const body: any = req.body;
+    cache.setLocale(workbookId, body.locale);
+
+    return resp.view("src/public/components/locale_select.html", {
+      workbookId: workbookId,
+      workbook_locale: body.locale,
+      locales: LOCALES,
+    });
+  });
+
   // initiates place creation via the job manager
-  fastify.post("/workbook/:id/submit", async (req, resp) => {
+  fastify.post("/workbook/:id/submit", async (req) => {
     const params: any = req.params;
     const workbookId = params.id!!;
     jobManager.doUpload(workbookId);

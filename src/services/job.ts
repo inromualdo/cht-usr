@@ -42,19 +42,12 @@ export class UploadManager extends EventEmitter {
       const batch: batch = {
         workbookId: workbook.id,
         placeType: placeType,
-        placeIds: [],
+        placeIds:
+          workbook.places.get(placeType)?.filter((placeId: string) => {
+            const state = this.cache.getJobState(placeId);
+            return state && state.status === uploadState.SCHEDULED;
+          }) ?? [],
       };
-      workbook.places
-        .get(placeType)
-        ?.filter((placeId: string) => {
-          const state = this.cache.getJobState(placeId);
-          return !state || state!!.status == uploadState.FAILURE;
-        })
-        .forEach((placeId: string) => {
-          batch.placeIds.push(placeId);
-          this.cache.setJobState(placeId, uploadState.PENDING);
-          this.emitJobStateChange(workbook.id, placeId, uploadState.PENDING);
-        });
       batches.push(batch);
     }
     return batches;
@@ -79,6 +72,8 @@ export class UploadManager extends EventEmitter {
 
   private uploadBatch = async (job: batch) => {
     for (const placeId of job.placeIds) {
+      this.cache.setJobState(placeId, uploadState.IN_PROGESS);
+      this.emitJobStateChange(job.workbookId, placeId, uploadState.IN_PROGESS);
       const place = this.cache.getPlace(placeId)!!;
       try {
         let creds: userCredentials;
