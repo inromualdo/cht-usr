@@ -7,33 +7,32 @@
       "name": "c_community_health_unit",
       "friendly": "CHU",
       "parent_type": "b_sub_county",
-      "parent_property_link": "sub_county_name",
       "contact_type": "person",
       "roles": ["community_health_assistant"],
       "properties": [
         {
           "csv_name": "Sub County Name",
-          "doc_name": "subcount",
+          "doc_name": "PARENT",
           "type": "string",
-          "require": true
+          "required": true
         },
         {
           "csv_name": "CHU Code",
           "doc_name": "chu_code",
           "type": "integer",
-          "require": true
+          "required": true
         },
         {
           "csv_name": "Link Facility Name",
           "doc_name": "facility_name",
           "type": "integer",
-          "require": true
+          "required": true
         },
         {
           "csv_name": "Link Facility MFL Code",
           "doc_name": "facility_code",
           "type": "facility_mfl",
-          "require": true
+          "required": true
         }
       ],
       "contact_properties": [
